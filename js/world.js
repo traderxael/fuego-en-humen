@@ -58,24 +58,42 @@ var buildWorld = (function () {
       })
     );
     sea.rotation.x = -Math.PI / 2;
-    sea.position.set(0, -0.4, -90);
+    sea.position.set(0, -0.05, -90);
     sea.receiveShadow = true;
     group.add(sea);
 
     // --- Fort: U-shaped wall opening toward the sea (-Z) ---
-    // Player stands inside; north wall has cannon embrasures; south wall is solid.
+    // Player stands inside. The seaward face is a LOW battery parapet
+    // (~1.3 m + parapet lip) the player can fire over; the U opens
+    // toward the sea via two angled "horn" arms extending north from
+    // the side walls. No embrasures — the fort cannons are props for
+    // now; the interactive cannon arrives with its own task.
     var fort = new THREE.Group();
     fort.name = 'fort';
     fort.position.set(0, 0, 20);
 
+    var parapetHeight = 1.3;
     var wallHeight = 4;
     var walls = [];
 
-    // North wall (sea side), ~40 wide, with parapet and crenellations
-    var northWall = Models.makeFortWall(40, wallHeight);
+    // North battery parapet (sea side), ~40 wide, low enough to see/fire over
+    var northWall = Models.makeFortWall(40, parapetHeight);
     northWall.position.set(0, 0, -14);
     fort.add(northWall);
     walls.push(northWall);
+
+    // Horn arms extending toward the sea at both corners (the "U" opening)
+    var westArm = Models.makeFortWall(10, wallHeight);
+    westArm.rotation.y = Math.PI / 3;
+    westArm.position.set(-23, 0, -16);
+    fort.add(westArm);
+    walls.push(westArm);
+
+    var eastArm = Models.makeFortWall(10, wallHeight);
+    eastArm.rotation.y = -Math.PI / 3;
+    eastArm.position.set(23, 0, -16);
+    fort.add(eastArm);
+    walls.push(eastArm);
 
     // South wall (behind player) - taller watchtower-ish, same builder
     var southWall = Models.makeFortWall(40, wallHeight + 1);
@@ -142,6 +160,7 @@ var buildWorld = (function () {
     for (var s = 0; s < shipDefs.length; s++) {
       var ship = Models.makeShip();
       ship.position.set(shipDefs[s].x, -0.5, shipDefs[s].z);
+      ship.userData.baseY = -0.5;
       ship.rotation.y = shipDefs[s].rot;
       ship.scale.setScalar(shipDefs[s].scale);
       group.add(ship);

@@ -23,7 +23,8 @@
     requestAnimationFrame(animate);
     // Gentle sea bob so the deck doesn't feel static (ships only).
     world.ships.forEach((ship, i) => {
-      ship.position.y = -0.5 + Math.sin(performance.now() / 1400 + i * 1.3) * 0.18;
+      const baseY = ship.userData.baseY !== undefined ? ship.userData.baseY : 0;
+      ship.position.y = baseY + Math.sin(performance.now() / 1400 + i * 1.3) * 0.18;
     });
     renderer.render(scene, camera);
   }

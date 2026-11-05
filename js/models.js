@@ -29,6 +29,7 @@ var Models = (function () {
     var m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), mat(color));
     m.position.set(x || 0, y || 0, z || 0);
     m.castShadow = true;
+    m.receiveShadow = true;
     return m;
   }
 
@@ -36,6 +37,7 @@ var Models = (function () {
     var m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 12), mat(color));
     m.position.set(x || 0, y || 0, z || 0);
     m.castShadow = true;
+    m.receiveShadow = true;
     return m;
   }
 
@@ -97,7 +99,6 @@ var Models = (function () {
     // Hull: long box + tapered bow/stern (rotated boxes)
     g.add(box(3.2, 1.1, 10, hullColor, 0, 0.6, 0));
     var bow = box(2.6, 1.0, 3.0, hullColor, 0, 0.55, 6.2);
-    bow.rotation.y = Math.PI;
     // Simple bow wedge using a scaled cone rotated forward
     var wedge = cone(1.4, 3.0, hullColor, 0, 0.6, 6.8);
     wedge.rotation.x = Math.PI / 2;
@@ -110,15 +111,14 @@ var Models = (function () {
     g.add(box(0.15, 0.5, 9.4, hullColor, -1.5, 1.4, 0.4));
     g.add(box(0.15, 0.5, 9.4, hullColor, 1.5, 1.4, 0.4));
     // Masts (3) with white sails (thin boxes)
-    var mastXs = [0, 0, 0];
     var mastZs = [-3.4, 0.4, 4.2];
     var mastHs = [6.5, 8.0, 5.5];
     for (var i = 0; i < 3; i++) {
-      g.add(cyl(0.07, 0.1, mastHs[i], 0x6b4a2f, mastXs[i], mastHs[i] / 2 + 1.2, mastZs[i], 8));
+      g.add(cyl(0.07, 0.1, mastHs[i], 0x6b4a2f, 0, mastHs[i] / 2 + 1.2, mastZs[i], 8));
       var sailW = 2.2 - i * 0.25;
-      var sail = box(sailW, 1.8, 0.08, 0xf2ead8, mastXs[i], mastHs[i] / 2 + 1.6, mastZs[i]);
+      var sail = box(sailW, 1.8, 0.08, 0xf2ead8, 0, mastHs[i] / 2 + 1.6, mastZs[i]);
       g.add(sail);
-      var yard = cyl(0.03, 0.03, sailW + 0.6, 0x6b4a2f, mastXs[i], mastHs[i] / 2 + 2.5, mastZs[i], 6);
+      var yard = cyl(0.03, 0.03, sailW + 0.6, 0x6b4a2f, 0, mastHs[i] / 2 + 2.5, mastZs[i], 6);
       yard.rotation.z = Math.PI / 2;
       g.add(yard);
     }
