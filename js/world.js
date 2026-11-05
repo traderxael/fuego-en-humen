@@ -1,5 +1,5 @@
 // Builds the low-poly Humen scene: beach, sea, U-shaped fort, cannons, ships.
-// Exposes `buildWorld(scene)` -> { fort, walls, sea, ships } in the browser;
+// Exposes `buildWorld(scene)` -> { fort, walls, sea, ships, cannons } in the browser;
 // also guarded for Node tooling consistency.
 
 var buildWorld = (function () {

@@ -80,6 +80,13 @@
     if (overlay) overlay.style.display = 'none';
   }
 
+  // Audio is optional: if js/audio.js failed to load, gameplay must continue.
+  function sfxCall(name) {
+    if (typeof sfx !== 'undefined' && sfx && typeof sfx[name] === 'function') {
+      try { sfx[name](); } catch (e) { /* audio is non-critical */ }
+    }
+  }
+
   // Wave horn: exactly once per wave. Wave 1 is announced from the Jugar
   // click (it spawns at load, before the AudioContext may exist); later waves
   // from the spawn branch. The flag keeps either path from double-playing.
@@ -87,14 +94,14 @@
   function playWaveHorn() {
     if (state.wave === hornWave) return;
     hornWave = state.wave;
-    sfx.waveHorn();
+    sfxCall('waveHorn');
   }
 
   const btnPlay = document.getElementById('btn-play');
   if (btnPlay) {
     btnPlay.addEventListener('click', function () {
-      sfx.unlock(); // AudioContext must be created/resumed inside this gesture
-      sfx.ambientSea(); // quiet looped sea bed (idempotent)
+      sfxCall('unlock'); // AudioContext must be created/resumed inside this gesture
+      sfxCall('ambientSea'); // quiet looped sea bed (idempotent)
       Screens.hideMenu();
       hidePauseOverlay();
       HUD.show();
@@ -122,7 +129,7 @@
       HUD.hide();
       hidePauseOverlay();
       exitPointerLockSafe();
-      sfx.victory();
+      sfxCall('victory');
       Screens.showVictory({ wavesRepelled: WAVES.length, score: state.score || 0 });
       return;
     }
@@ -130,7 +137,7 @@
       HUD.hide();
       hidePauseOverlay();
       exitPointerLockSafe();
-      sfx.defeat();
+      sfxCall('defeat');
       Screens.showDefeat(Screens.detectDefeatCause(state));
     }
   }

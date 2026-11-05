@@ -43,10 +43,17 @@ var createPlayer = (function () {
     // --- Weapon state ---
     var clips = { mosquete: WEAPONS.mosquete.clipSize }; // sable has no clip
     var currentKey = 'mosquete';
-    var lastShotAt = -Infinity;
+    var lastShotAt = {}; // per-weapon fire cooldown timestamps
 
     function weaponDef() {
       return WEAPONS[currentKey];
+    }
+
+    // Audio is optional: if js/audio.js failed to load, gameplay must continue.
+    function sfxCall(name) {
+      if (typeof sfx !== 'undefined' && sfx && typeof sfx[name] === 'function') {
+        try { sfx[name](); } catch (e) { /* audio is non-critical */ }
+      }
     }
 
     function isReloading() {
@@ -200,7 +207,7 @@ var createPlayer = (function () {
       var enemy = node && node.userData && typeof node.userData.hp === 'number' ? node : target;
       if (enemy.userData && typeof enemy.userData.hp === 'number') enemy.userData.hp -= damage;
       if (typeof hooks.onEnemyHit === 'function') hooks.onEnemyHit(enemy, damage, weaponKeyName);
-      sfx.hit(); // landed hit: low thud
+      sfxCall('hit'); // landed hit: low thud
       return enemy;
     }
 
@@ -229,7 +236,7 @@ var createPlayer = (function () {
       }
       if (best && best.userData && typeof best.userData.hp === 'number') best.userData.hp -= damage;
       if (best && typeof hooks.onEnemyHit === 'function') hooks.onEnemyHit(best, damage, weaponKeyName);
-      if (best) sfx.hit(); // landed melee hit: low thud
+      if (best) sfxCall('hit'); // landed melee hit: low thud
       return best;
     }
 
@@ -242,14 +249,14 @@ var createPlayer = (function () {
       if (typeof camera.updateMatrixWorld === 'function') camera.updateMatrixWorld(true);
       var def = weaponDef();
       var now = state.time || 0;
-      if (now - lastShotAt < (def.fireCooldown || 0)) return false;
+      if (now - (lastShotAt[currentKey] || -Infinity) < (def.fireCooldown || 0)) return false;
       if (def.type !== 'melee' && isReloading()) return false;
 
       if (def.type !== 'melee') {
         if ((clips[currentKey] || 0) <= 0) return false;
         clips[currentKey] -= 1;
       }
-      lastShotAt = now;
+      lastShotAt[currentKey] = now;
 
       if (def.type === 'melee') hitMelee(def.damage, currentKey);
       else hitEnemy(def.damage, currentKey);
@@ -257,11 +264,11 @@ var createPlayer = (function () {
       recoil = 1;
 
       // Procedural SFX (js/audio.js): musket crack vs sable swish.
-      if (def.type === 'melee') sfx.swish();
-      else sfx.shot();
+      if (def.type === 'melee') sfxCall('swish');
+      else sfxCall('shot');
 
       // Mosquete: after firing the last round, auto-reload (clicks on start).
-      if (def.type !== 'melee' && clips[currentKey] === 0 && startReload(currentKey, state)) sfx.reload();
+      if (def.type !== 'melee' && clips[currentKey] === 0 && startReload(currentKey, state)) sfxCall('reload');
 
       syncStateAmmo();
       return true;
@@ -270,7 +277,7 @@ var createPlayer = (function () {
     function reload() {
       if (state.phase !== 'playing') return false;
       var started = startReload(currentKey, state); // sable: no reloadTime -> graceful no-op
-      if (started) sfx.reload();
+      if (started) sfxCall('reload');
       syncStateAmmo();
       return started;
     }
