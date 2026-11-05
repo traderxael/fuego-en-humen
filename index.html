@@ -9,17 +9,70 @@
   </head>
   <body>
     <canvas id="game-canvas"></canvas>
-    <div id="hud">
-      <span id="hud-health">HP 100</span>
-      <span id="hud-ammo">Mosquete 1/1</span>
-      <span id="hud-wave">Oleada 1</span>
-      <span id="hud-fort">Fuerte 100</span>
+
+    <!-- HUD: visible only while playing / paused -->
+    <div id="hud" class="hidden">
+      <div class="hud-corner hud-top-left">
+        <div class="hud-label">Salud</div>
+        <div class="bar bar-wide"><div id="hud-health-bar" class="bar-fill bar-health"></div></div>
+        <span id="hud-health" class="hud-note">HP 100</span>
+      </div>
+      <div class="hud-top-center"><span id="hud-wave">Oleada 1/3</span></div>
+      <div class="hud-corner hud-top-right">
+        <div class="hud-label">Fuerte</div>
+        <div class="bar bar-wide"><div id="hud-fort-bar" class="bar-fill bar-fort"></div></div>
+        <span id="hud-fort" class="hud-note">Fuerte 100</span>
+      </div>
+      <div class="hud-bottom-right"><span id="hud-ammo">Mosquete 1 / 1</span></div>
+      <div id="crosshair"><div class="ch-ring"></div><div class="ch-dot"></div></div>
+      <div id="hit-marker"></div>
     </div>
-    <div id="pause-overlay">Clic para continuar</div>
+
+    <div id="intro-toast">Humen, 1841 — Los británicos desembarcan. ¡A las murallas!</div>
+
+    <div id="pause-overlay"><div class="pause-inner">En pausa<span>Clic para continuar</span></div></div>
+
+    <!-- Main menu -->
+    <div id="menu-screen" class="screen">
+      <div class="menu-inner">
+        <div class="menu-kicker">Humen · Anunghoy · 1841</div>
+        <h1 class="menu-title">Fuego<br />en Humen</h1>
+        <div class="menu-rule"><span></span></div>
+        <p class="menu-sub">Primera Guerra del Opio. Lin Zexu ha ordenado destruir el cargamento de opio británico.<br />Como represalia, la flota inglesa regresa para castigar al Imperio.<br />Tú eres un soldado qing en los fuertes. Que no caiga la muralla.</p>
+        <button id="btn-play" class="btn-primary">Jugar</button>
+        <div class="menu-credits">Un homenaje a los defensores de Humen · Three.js</div>
+      </div>
+    </div>
+
+    <!-- Victory -->
+    <div id="victory-screen" class="screen hidden">
+      <div class="screen-inner">
+        <div class="screen-kicker">Victoria</div>
+        <h1 class="screen-title screen-title-victory">El fuerte resiste.<br />Humen no cae.</h1>
+        <div class="stats-row">
+          <div class="stat"><span id="stat-waves" class="stat-value">3</span><span class="stat-label">Oleadas repelidas</span></div>
+          <div class="stat"><span id="stat-score" class="stat-value">0</span><span class="stat-label">Puntuación</span></div>
+        </div>
+        <button id="btn-again" class="btn-primary">Jugar otra vez</button>
+      </div>
+    </div>
+
+    <!-- Defeat -->
+    <div id="defeat-screen" class="screen hidden">
+      <div class="screen-inner">
+        <div class="screen-kicker screen-kicker-defeat">Derrota</div>
+        <h1 class="screen-title screen-title-defeat">Derrota</h1>
+        <p id="defeat-cause" class="screen-cause">Has caído defendiendo la muralla.</p>
+        <button id="btn-retry" class="btn-primary btn-primary-defeat">Reintentar</button>
+      </div>
+    </div>
+
     <script src="vendor/three.min.js"></script>
     <script src="js/logic/config.js"></script>
     <script src="js/logic/state.js"></script>
     <script src="js/logic/combat.js"></script>
+    <script src="js/hud.js"></script>
+    <script src="js/screens.js"></script>
     <script src="js/models.js"></script>
     <script src="js/world.js"></script>
     <script src="js/player.js"></script>

@@ -35,6 +35,7 @@
     enemies: enemies,
     onEnemyHit: function (enemy) {
       Enemies.flashEnemy(enemy);
+      HUD.flashHit(); // brief white flash at the crosshair
     },
   });
 
@@ -85,6 +86,57 @@
     onEnemyKilled: function () { state.score = (state.score || 0) + 100; },
   };
 
+  // --- Menu start + end-of-game screens ---
+  function exitPointerLockSafe() {
+    try {
+      if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+    } catch (e) { /* headless / unsupported */ }
+  }
+  function hidePauseOverlay() {
+    const overlay = document.getElementById('pause-overlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  const btnPlay = document.getElementById('btn-play');
+  if (btnPlay) {
+    btnPlay.addEventListener('click', function () {
+      Screens.hideMenu();
+      hidePauseOverlay();
+      HUD.show();
+      setPhase(state, 'playing'); // menu -> playing; onLockChange also asserts this
+      Screens.showIntroToast();
+      try {
+        const p = canvas.requestPointerLock();
+        if (p && typeof p.catch === 'function') p.catch(function () { /* headless / cooldown */ });
+      } catch (e) { /* pointer lock unavailable (e.g. headless) */ }
+    });
+  }
+
+  // React to phase flips (victory/defeat can happen mid-frame inside
+  // updateEnemies/nextWave). Defeat cause is read at the flip, when we can
+  // still tell which pool hit 0.
+  let lastPhase = state.phase;
+  function onPhaseChanged(now) {
+    if (now === 'playing') {
+      Screens.hideMenu();
+      HUD.show();
+      return;
+    }
+    if (now === 'victory') {
+      HUD.hide();
+      hidePauseOverlay();
+      exitPointerLockSafe();
+      Screens.showVictory({ wavesRepelled: WAVES.length, score: state.score || 0 });
+      return;
+    }
+    if (now === 'defeat') {
+      HUD.hide();
+      hidePauseOverlay();
+      exitPointerLockSafe();
+      Screens.showDefeat(Screens.detectDefeatCause(state));
+    }
+  }
+
   let lastTime = performance.now();
   function animate() {
     requestAnimationFrame(animate);
@@ -106,6 +158,13 @@
           Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
         }
       }
+    }
+
+    // Bars/counters/hit-marker-adjacent readout (cached; writes DOM on change only).
+    HUD.updateHUD(state);
+    if (state.phase !== lastPhase) {
+      lastPhase = state.phase;
+      onPhaseChanged(state.phase);
     }
 
     // Gentle sea bob so the deck doesn't feel static (ships only).

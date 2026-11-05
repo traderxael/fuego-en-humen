@@ -83,10 +83,13 @@ var createPlayer = (function () {
           ? 'Recargando…'
           : def.type === 'melee'
             ? 'Sable'
-            : 'Mosquete ' + state.ammo + '/' + state.clipSize;
+            : 'Mosquete ' + state.ammo + ' / ' + state.clipSize;
       }
       el = document.getElementById('hud-wave');
-      if (el) el.textContent = 'Oleada ' + state.wave;
+      if (el) {
+        var totalWaves = (typeof WAVES !== 'undefined' && WAVES.length) ? WAVES.length : 3;
+        el.textContent = 'Oleada ' + state.wave + '/' + totalWaves;
+      }
       el = document.getElementById('hud-fort');
       if (el) el.textContent = 'Fuerte ' + state.fortIntegrity;
     }
