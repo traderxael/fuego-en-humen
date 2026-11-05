@@ -79,7 +79,7 @@ var createPlayer = (function () {
       el = document.getElementById('hud-ammo');
       if (el) {
         var def = weaponDef();
-        el.textContent = isReloading()
+        el.textContent = (def.type !== 'melee' && isReloading())
           ? 'Recargando…'
           : def.type === 'melee'
             ? 'Sable'
@@ -261,7 +261,7 @@ var createPlayer = (function () {
       var def = weaponDef();
       var now = state.time || 0;
       if (now - lastShotAt < (def.fireCooldown || 0)) return false;
-      if (isReloading()) return false;
+      if (def.type !== 'melee' && isReloading()) return false;
 
       if (def.type !== 'melee') {
         if ((clips[currentKey] || 0) <= 0) return false;
@@ -282,12 +282,14 @@ var createPlayer = (function () {
     }
 
     function reload() {
+      if (state.phase !== 'playing') return false;
       var started = startReload(currentKey, state); // sable: no reloadTime -> graceful no-op
       syncStateAmmo();
       return started;
     }
 
     function switchWeapon(i) {
+      if (state.phase !== 'playing') return currentKey;
       var next = null;
       if (i === 1 || i === '1' || i === 'mosquete') next = 'mosquete';
       else if (i === 2 || i === '2' || i === 'sable') next = 'sable';
