@@ -43,33 +43,15 @@
   // clicks into pointer lock, at which point the game begins).
   Enemies.spawnWave(scene, WAVES[0], enemies, 1);
 
-  // Lightweight cached HUD repaint for playerHp / fortIntegrity — the spans are
-  // also written by js/player.js, we only touch them when the value changed.
-  const hudHealth = document.getElementById('hud-health');
-  const hudFort = document.getElementById('hud-fort');
-  let lastHudHp = null;
-  let lastHudFort = null;
-  function refreshHud() {
-    const hp = state.playerHp;
-    if (hp !== lastHudHp) {
-      lastHudHp = hp;
-      if (hudHealth) hudHealth.textContent = 'HP ' + hp;
-    }
-    const fort = state.fortIntegrity;
-    if (fort !== lastHudFort) {
-      lastHudFort = fort;
-      if (hudFort) hudFort.textContent = 'Fuerte ' + fort;
-    }
-  }
+  // Text spans / bars are owned by js/hud.js (per-frame updateHUD in animate);
+  // damage callbacks only mutate state.
 
   // Both damage-to-fort channels end in this one path.
   const fortDamaged = function (dmg) {
     applyWaveDamage(state, dmg);
-    refreshHud();
   };
   const playerDamaged = function (dmg) {
     applyPlayerDamage(state, dmg);
-    refreshHud();
   };
 
   const enemyCallbacks = {

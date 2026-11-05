@@ -2,10 +2,8 @@
 // Browser global `HUD`; also guarded for Node tooling consistency.
 //
 // The HUD is read-only with respect to game state: it never mutates `state`.
-// Text spans (#hud-health, #hud-ammo, #hud-fort, #hud-wave) are also written by
-// js/player.js (and js/main.js for health/fort) with identical formats — the
-// established dual-writer pattern. This module owns the bars, the formatted
-// strings (cached, rewritten only on change) and the hit marker.
+// This module is the sole writer of the #hud-* readouts (health, fort, ammo,
+// wave) plus the bars and the hit marker.
 
 var HUD = (function () {
   var els = null;

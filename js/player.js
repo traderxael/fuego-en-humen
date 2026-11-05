@@ -13,8 +13,8 @@
 //   state.ammo       rounds left in the mosquete clip (1 max); null for sable (no clip)
 //   state.clipSize   current weapon clip size; null for sable
 //   state.reloading  boolean, true while state.time < state.reloadingUntil
-// The player writes these directly into `state` (and mirrors them into the
-// #hud-* placeholder spans added in index.html) so the HUD can stay read-only.
+// The player writes these directly into `state`; the HUD is owned by js/hud.js,
+// which reads `state` every frame (read-only) and renders all #hud-* readouts.
 //
 // The player also advances state.time while phase === 'playing' so reload
 // deadlines (state.reloadingUntil, via startReload) tick in step with the game.
@@ -68,30 +68,7 @@ var createPlayer = (function () {
       if (typeof hooks.onAmmoChange === 'function') {
         hooks.onAmmoChange(currentKey, state.ammo, state.clipSize, state.reloading);
       }
-      updateHud();
-    }
-
-    function updateHud() {
-      if (typeof document === 'undefined') return;
-      var el;
-      el = document.getElementById('hud-health');
-      if (el) el.textContent = 'HP ' + state.playerHp;
-      el = document.getElementById('hud-ammo');
-      if (el) {
-        var def = weaponDef();
-        el.textContent = (def.type !== 'melee' && isReloading())
-          ? 'Recargando…'
-          : def.type === 'melee'
-            ? 'Sable'
-            : 'Mosquete ' + state.ammo + ' / ' + state.clipSize;
-      }
-      el = document.getElementById('hud-wave');
-      if (el) {
-        var totalWaves = (typeof WAVES !== 'undefined' && WAVES.length) ? WAVES.length : 3;
-        el.textContent = 'Oleada ' + state.wave + '/' + totalWaves;
-      }
-      el = document.getElementById('hud-fort');
-      if (el) el.textContent = 'Fuerte ' + state.fortIntegrity;
+      // Text spans + bars are owned by js/hud.js (per-frame updateHUD) — no writes here.
     }
 
     // --- Viewmodels (primitive shapes attached to the camera) ---
@@ -363,8 +340,7 @@ var createPlayer = (function () {
       );
       viewmodel.rotation.x = recoil * 0.22;
 
-      // Keep HUD reload label fresh as the deadline passes.
-      if (typeof document !== 'undefined' && isReloading() !== state.reloading) updateHud();
+      // HUD reload label freshness is handled by js/hud.js (per-frame).
       state.reloading = isReloading();
 
       return player;
