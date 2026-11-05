@@ -330,6 +330,7 @@ var Enemies = (function () {
         if (enemy.userData.cooldown <= 0) {
           enemy.userData.cooldown = ARTILLERY_INTERVAL;
           flashEnemy(enemy); // muzzle flash
+          if (typeof sfx !== 'undefined') sfx.enemyShot(); // soft crack
           if (typeof callbacks.onEnemyDamageFort === 'function') {
             callbacks.onEnemyDamageFort(ARTILLERY_DAMAGE);
           }
@@ -378,6 +379,7 @@ var Enemies = (function () {
         if (enemy.userData.cooldown <= 0) {
           enemy.userData.cooldown = SHOOT_COOLDOWN;
           flashEnemy(enemy); // muzzle flash (doubles as feedback)
+          if (typeof sfx !== 'undefined') sfx.enemyShot(); // soft crack
           if (typeof callbacks.onEnemyDamagePlayer === 'function') {
             callbacks.onEnemyDamagePlayer(enemy.userData.damage || 10);
           }

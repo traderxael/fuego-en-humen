@@ -82,10 +82,13 @@
   const btnPlay = document.getElementById('btn-play');
   if (btnPlay) {
     btnPlay.addEventListener('click', function () {
+      sfx.unlock(); // AudioContext must be created/resumed inside this gesture
+      sfx.ambientSea(); // quiet looped sea bed (idempotent)
       Screens.hideMenu();
       hidePauseOverlay();
       HUD.show();
       setPhase(state, 'playing'); // menu -> playing; onLockChange also asserts this
+      sfx.waveHorn(); // wave 1 spawned at load, before the context existed
       Screens.showIntroToast();
       try {
         const p = canvas.requestPointerLock();
@@ -108,6 +111,7 @@
       HUD.hide();
       hidePauseOverlay();
       exitPointerLockSafe();
+      sfx.victory();
       Screens.showVictory({ wavesRepelled: WAVES.length, score: state.score || 0 });
       return;
     }
@@ -115,6 +119,7 @@
       HUD.hide();
       hidePauseOverlay();
       exitPointerLockSafe();
+      sfx.defeat();
       Screens.showDefeat(Screens.detectDefeatCause(state));
     }
   }
@@ -138,6 +143,7 @@
         nextWave(state); // wave 3 clear -> phase 'victory'
         if (state.phase === 'playing' && state.wave !== prevWave) {
           Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
+          sfx.waveHorn();
         }
       }
     }
