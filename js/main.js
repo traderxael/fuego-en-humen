@@ -17,6 +17,7 @@
   scene.add(camera);
 
   const renderer = new THREE.WebGLRenderer({ canvas: canvas });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
