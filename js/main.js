@@ -10,25 +10,21 @@
   );
   const renderer = new THREE.WebGLRenderer({ canvas: canvas });
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
-  const material = new THREE.MeshStandardMaterial({ color: 0x2f6f4f });
-  const cube = new THREE.Mesh(geometry, material);
-  scene.add(cube);
+  const world = buildWorld(scene);
 
-  const ambientLight = new THREE.AmbientLight(0xffffff);
-  scene.add(ambientLight);
-
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-  directionalLight.position.set(5, 10, 7.5);
-  scene.add(directionalLight);
-
-  camera.position.set(0, 1.6, 6);
+  // Camera inside the fort, looking north toward the sea/beach/ships.
+  camera.position.set(0, 2.2, 24);
+  camera.lookAt(0, 2.0, -60);
 
   function animate() {
     requestAnimationFrame(animate);
-    cube.rotation.x += 0.008;
-    cube.rotation.y += 0.012;
+    // Gentle sea bob so the deck doesn't feel static (ships only).
+    world.ships.forEach((ship, i) => {
+      ship.position.y = -0.5 + Math.sin(performance.now() / 1400 + i * 1.3) * 0.18;
+    });
     renderer.render(scene, camera);
   }
   animate();
