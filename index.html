@@ -9,12 +9,20 @@
   </head>
   <body>
     <canvas id="game-canvas"></canvas>
+    <div id="hud">
+      <span id="hud-health">HP 100</span>
+      <span id="hud-ammo">Mosquete 1/1</span>
+      <span id="hud-wave">Oleada 1</span>
+      <span id="hud-fort">Fuerte 100</span>
+    </div>
+    <div id="pause-overlay">Clic para continuar</div>
     <script src="vendor/three.min.js"></script>
     <script src="js/logic/config.js"></script>
     <script src="js/logic/state.js"></script>
     <script src="js/logic/combat.js"></script>
     <script src="js/models.js"></script>
     <script src="js/world.js"></script>
+    <script src="js/player.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>

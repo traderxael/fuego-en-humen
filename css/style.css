@@ -13,3 +13,34 @@ body {
   width: 100%;
   height: 100%;
 }
+
+/* HUD placeholder layout only — visual styling lands in Task 6. */
+#hud {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 12px;
+  color: #fff;
+  font-family: monospace;
+  font-size: 14px;
+  pointer-events: none;
+  text-shadow: 0 1px 2px #000;
+  z-index: 5;
+}
+
+/* Pause overlay — functional styles only; visual polish lands in Task 6. */
+#pause-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  font-family: monospace;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 10;
+  user-select: none;
+}
