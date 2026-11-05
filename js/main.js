@@ -2,6 +2,7 @@
   const canvas = document.getElementById('game-canvas');
 
   const state = createGameState();
+  window.__state = state; // exposed for later tasks (HUD/debug); harmless in production
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(
@@ -20,9 +21,30 @@
 
   const world = buildWorld(scene);
 
+  // Shared enemies array: passed to the player (raycast/melee targets) and
+  // filled by Enemies.spawnWave / maintained by Enemies.updateEnemies.
+  const enemies = [];
+  window.__enemies = enemies; // exposed for smoke tests / debugging
+
   // Player spawns inside the fort, looking north toward the sea/beach/ships.
   // (createPlayer owns the camera transform: eyes at 1.7 m, yaw 0 = -Z.)
-  const player = createPlayer(camera, canvas, { state: state, enemies: [] });
+  const player = createPlayer(camera, canvas, {
+    state: state,
+    enemies: enemies,
+    onEnemyHit: function (enemy) {
+      Enemies.flashEnemy(enemy);
+    },
+  });
+
+  // Wave 1 is on the beach from the start (phase stays 'menu' until the user
+  // clicks into pointer lock, at which point the game begins).
+  Enemies.spawnWave(scene, WAVES[0], enemies, 1);
+
+  const enemyCallbacks = {
+    onEnemyDamagePlayer: function (dmg) { applyPlayerDamage(state, dmg); },
+    onEnemyDamageFort: function (dmg) { applyWaveDamage(state, dmg); },
+    onEnemyKilled: function () { state.score = (state.score || 0) + 100; },
+  };
 
   let lastTime = performance.now();
   function animate() {
@@ -32,6 +54,19 @@
     lastTime = now;
 
     player.update(dt);
+
+    if (state.phase === 'playing') {
+      // Enemy AI + spawn trickle; also detects a cleared wave and advances.
+      Enemies.updateEnemies(dt, player, world, enemyCallbacks);
+
+      if (Enemies.pendingSpawns() === 0 && enemies.length === 0) {
+        const prevWave = state.wave;
+        nextWave(state); // wave 3 clear -> phase 'victory'
+        if (state.phase === 'playing' && state.wave !== prevWave) {
+          Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
+        }
+      }
+    }
 
     // Gentle sea bob so the deck doesn't feel static (ships only).
     world.ships.forEach((ship, i) => {
