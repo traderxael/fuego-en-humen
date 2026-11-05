@@ -67,8 +67,8 @@ var HUD = (function () {
       if (e.waveText) e.waveText.textContent = 'Oleada ' + wave + '/' + total;
     }
 
-    // Ammo readout — mirrors js/player.js with an identical format. Only key
-    // reload logic off the *active* weapon: the sable never reloads.
+    // Ammo readout — hud.js owns this now (player.js no longer writes it).
+    // Only key reload logic off the *active* weapon: the sable never reloads.
     var weapon = state.weapon || 'mosquete';
     var def = (typeof WEAPONS !== 'undefined') ? WEAPONS[weapon] : null;
     var isMelee = def ? def.type === 'melee' : weapon === 'sable';
