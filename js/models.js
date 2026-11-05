@@ -96,7 +96,7 @@ var Models = (function () {
     var g = new THREE.Group();
     var hullColor = 0x5a4230;
     var deckColor = 0x8a6b4a;
-    // Hull: long box + tapered bow/stern (rotated boxes)
+    // Hull: long box + bow box + forward cone wedge
     g.add(box(3.2, 1.1, 10, hullColor, 0, 0.6, 0));
     var bow = box(2.6, 1.0, 3.0, hullColor, 0, 0.55, 6.2);
     // Simple bow wedge using a scaled cone rotated forward
