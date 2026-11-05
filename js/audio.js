@@ -58,6 +58,7 @@ var sfx = (function () {
         if (p && typeof p.catch === 'function') p.catch(function () { /* still suspended; sounds stay silent */ });
       } catch (e) { /* ignore */ }
     }
+    if (ctx.state !== 'running') return null; // still not running -> silent no-op, never schedule late
     return ctx;
   }
 

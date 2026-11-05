@@ -79,6 +79,16 @@
     if (overlay) overlay.style.display = 'none';
   }
 
+  // Wave horn: exactly once per wave. Wave 1 is announced from the Jugar
+  // click (it spawns at load, before the AudioContext may exist); later waves
+  // from the spawn branch. The flag keeps either path from double-playing.
+  let hornWave = 0;
+  function playWaveHorn() {
+    if (state.wave === hornWave) return;
+    hornWave = state.wave;
+    sfx.waveHorn();
+  }
+
   const btnPlay = document.getElementById('btn-play');
   if (btnPlay) {
     btnPlay.addEventListener('click', function () {
@@ -88,7 +98,7 @@
       hidePauseOverlay();
       HUD.show();
       setPhase(state, 'playing'); // menu -> playing; onLockChange also asserts this
-      sfx.waveHorn(); // wave 1 spawned at load, before the context existed
+      playWaveHorn(); // wave 1 (spawned at load, before the context existed)
       Screens.showIntroToast();
       try {
         const p = canvas.requestPointerLock();
@@ -143,7 +153,7 @@
         nextWave(state); // wave 3 clear -> phase 'victory'
         if (state.phase === 'playing' && state.wave !== prevWave) {
           Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
-          sfx.waveHorn();
+          playWaveHorn();
         }
       }
     }
