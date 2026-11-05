@@ -58,7 +58,7 @@ var buildWorld = (function () {
       })
     );
     sea.rotation.x = -Math.PI / 2;
-    sea.position.set(0, -0.05, -90);
+    sea.position.set(0, 0.02, -90);
     sea.receiveShadow = true;
     group.add(sea);
 
