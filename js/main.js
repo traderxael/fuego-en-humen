@@ -2,7 +2,9 @@
   const canvas = document.getElementById('game-canvas');
 
   const state = createGameState();
-  window.__state = state; // exposed for later tasks (HUD/debug); harmless in production
+  // Debug globals only under ?debug=1 (headless smoke + later tasks).
+  const DEBUG_MODE = window.location && /[?&]debug=1\b/.test(window.location.search);
+  if (DEBUG_MODE) window.__state = state;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(
@@ -24,7 +26,7 @@
   // Shared enemies array: passed to the player (raycast/melee targets) and
   // filled by Enemies.spawnWave / maintained by Enemies.updateEnemies.
   const enemies = [];
-  window.__enemies = enemies; // exposed for smoke tests / debugging
+  if (DEBUG_MODE) window.__enemies = enemies; // debug only: smoke tests / debugging
 
   // Player spawns inside the fort, looking north toward the sea/beach/ships.
   // (createPlayer owns the camera transform: eyes at 1.7 m, yaw 0 = -Z.)
@@ -40,9 +42,46 @@
   // clicks into pointer lock, at which point the game begins).
   Enemies.spawnWave(scene, WAVES[0], enemies, 1);
 
+  // Lightweight cached HUD repaint for playerHp / fortIntegrity — the spans are
+  // also written by js/player.js, we only touch them when the value changed.
+  const hudHealth = document.getElementById('hud-health');
+  const hudFort = document.getElementById('hud-fort');
+  let lastHudHp = null;
+  let lastHudFort = null;
+  function refreshHud() {
+    const hp = state.playerHp;
+    if (hp !== lastHudHp) {
+      lastHudHp = hp;
+      if (hudHealth) hudHealth.textContent = 'HP ' + hp;
+    }
+    const fort = state.fortIntegrity;
+    if (fort !== lastHudFort) {
+      lastHudFort = fort;
+      if (hudFort) hudFort.textContent = 'Fuerte ' + fort;
+    }
+  }
+
+  // Both damage-to-fort channels end in this one path.
+  const fortDamaged = function (dmg) {
+    applyWaveDamage(state, dmg);
+    refreshHud();
+  };
+  const playerDamaged = function (dmg) {
+    applyPlayerDamage(state, dmg);
+    refreshHud();
+  };
+
   const enemyCallbacks = {
-    onEnemyDamagePlayer: function (dmg) { applyPlayerDamage(state, dmg); },
-    onEnemyDamageFort: function (dmg) { applyWaveDamage(state, dmg); },
+    onEnemyDamagePlayer: playerDamaged,
+    // Artillery (and fallback channel for soldier melee if onEnemyReachWall is
+    // absent): raw fort damage.
+    onEnemyDamageFort: fortDamaged,
+    // Soldier reached the parapet plane and melee'd it: route through the same
+    // fort-damage path.
+    onEnemyReachWall: function (enemy) {
+      const dmg = (enemy && enemy.userData && enemy.userData.damage) || 10;
+      fortDamaged(dmg);
+    },
     onEnemyKilled: function () { state.score = (state.score || 0) + 100; },
   };
 
@@ -59,7 +98,8 @@
       // Enemy AI + spawn trickle; also detects a cleared wave and advances.
       Enemies.updateEnemies(dt, player, world, enemyCallbacks);
 
-      if (Enemies.pendingSpawns() === 0 && enemies.length === 0) {
+      // Re-check phase: an enemy may have flipped it to 'defeat' mid-frame.
+      if (state.phase === 'playing' && Enemies.pendingSpawns() === 0 && enemies.length === 0) {
         const prevWave = state.wave;
         nextWave(state); // wave 3 clear -> phase 'victory'
         if (state.phase === 'playing' && state.wave !== prevWave) {

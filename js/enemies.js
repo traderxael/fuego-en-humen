@@ -28,8 +28,17 @@
 //               parapet plane is derived from `world.fort.position.z - 14`
 //               (fort-local parapet offset); falls back to world z = 6.
 //     callbacks (all optional, all guarded):
-//       onEnemyDamagePlayer(dmg) - soldier shot / melee hit the player
-//       onEnemyDamageFort(dmg)   - soldier/artillery hit the fort (wall/cannon fire)
+//       onEnemyDamagePlayer(dmg) - soldier shot / in-range melee hit the player
+//       onEnemyDamageFort(dmg)   - ARTILLERY round on the fort (8 dmg each); also
+//                                  the FALLBACK fort-melee channel, fired only
+//                                  when onEnemyReachWall is not provided
+//       onEnemyReachWall(enemy)  - soldier reached the parapet plane and melee'd it.
+//                                  Damage is carried on enemy.userData.damage
+//                                  (default 10); main.js routes this through the
+//                                  SAME fort-damage path (applyWaveDamage) as
+//                                  artillery. Exactly one of onEnemyReachWall /
+//                                  onEnemyDamageFort fires per soldier fort-melee
+//                                  swing (onEnemyReachWall wins when both exist).
 //       onEnemyKilled(enemy)     - enemy hp dropped to <= 0 (enemy already removed)
 //
 //   Enemies.flashEnemy(enemy) -> void  (emissive hit flash, ~80 ms; wired to
@@ -46,8 +55,9 @@
 //               fort is already below LOW_FORT_INTEGRITY — the wave then makes
 //               a straight melee rush on the wall.
 //     melee   - within ~2.5 m of the player or of the north wall: attacks on
-//               a cooldown. Hits the player if in range, otherwise the fort
-//               (onEnemyDamageFort).
+//               a cooldown. Hits the player if in range (onEnemyDamagePlayer),
+//               otherwise the fort (onEnemyReachWall, or onEnemyDamageFort as
+//               fallback).
 //   kind 'artillery': static; every 6 s fires on the fort (onEnemyDamageFort(8)).
 //     90 hp. Spawned one per wave from wave 2 onward (in addition to the
 //     waveDef.count soldiers).
@@ -379,9 +389,16 @@ var Enemies = (function () {
         else enemy.rotation.y = Math.PI; // face the wall/fort
         if (enemy.userData.cooldown <= 0) {
           enemy.userData.cooldown = MELEE_COOLDOWN;
-          if (atPlayer && typeof callbacks.onEnemyDamagePlayer === 'function') {
-            callbacks.onEnemyDamagePlayer(enemy.userData.damage || 10);
+          if (atPlayer) {
+            if (typeof callbacks.onEnemyDamagePlayer === 'function') {
+              callbacks.onEnemyDamagePlayer(enemy.userData.damage || 10);
+            }
+          } else if (typeof callbacks.onEnemyReachWall === 'function') {
+            // Soldier has reached the parapet: report the breach event; the
+            // caller routes the damage through its fort-damage path.
+            callbacks.onEnemyReachWall(enemy);
           } else if (typeof callbacks.onEnemyDamageFort === 'function') {
+            // Fallback for callers that only know the damage-based channel.
             callbacks.onEnemyDamageFort(enemy.userData.damage || 10);
           }
         }
