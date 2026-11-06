@@ -188,6 +188,37 @@ var sfx = (function () {
     } catch (e) { /* stay silent */ }
   }
 
+  // Fort / enemy cannon: deep boom with a long low rumble.
+  function cannon() {
+    var c = ready(); if (!c) return;
+    try {
+      var t = c.currentTime;
+      playNoise(c, t, { seconds: 0.45, filterType: 'lowpass', freq: 420, freqEnd: 70, peak: 0.75, attack: 0.004, decay: 0.4, q: 0.8 });
+      playTone(c, t, { type: 'sine', freq: 68, freqEnd: 26, glide: 0.5, seconds: 0.55, peak: 0.5, attack: 0.006, decay: 0.5 });
+      playTone(c, t, { type: 'square', freq: 120, freqEnd: 45, glide: 0.2, seconds: 0.22, peak: 0.12, attack: 0.004, decay: 0.2 });
+    } catch (e) { /* stay silent */ }
+  }
+
+  // Cannonball impact: bigger, dirtier rumble than the shot.
+  function explosion() {
+    var c = ready(); if (!c) return;
+    try {
+      var t = c.currentTime;
+      playNoise(c, t, { seconds: 0.9, filterType: 'lowpass', freq: 260, freqEnd: 45, peak: 0.65, attack: 0.005, decay: 0.85, q: 0.7 });
+      playTone(c, t, { type: 'sine', freq: 52, freqEnd: 22, glide: 0.7, seconds: 0.8, peak: 0.4, attack: 0.004, decay: 0.75 });
+    } catch (e) { /* stay silent */ }
+  }
+
+  // Footstep / landing: short filtered thud.
+  function step() {
+    var c = ready(); if (!c) return;
+    try {
+      var t = c.currentTime;
+      playNoise(c, t, { seconds: 0.07, filterType: 'lowpass', freq: 700, freqEnd: 240, peak: 0.075, attack: 0.003, decay: 0.07, q: 0.8 });
+      playTone(c, t, { type: 'sine', freq: 92, freqEnd: 58, glide: 0.06, seconds: 0.07, peak: 0.05, attack: 0.002, decay: 0.06 });
+    } catch (e) { /* stay silent */ }
+  }
+
   // Victory: major triad arpeggio (C4 E4 G4 C5).
   function victory() {
     var c = ready(); if (!c) return;
@@ -256,6 +287,9 @@ var sfx = (function () {
     victory: victory,
     defeat: defeat,
     ambientSea: ambientSea,
+    cannon: cannon,
+    explosion: explosion,
+    step: step,
   };
 })();
 

@@ -22,6 +22,8 @@ var HUD = (function () {
       waveText: document.getElementById('hud-wave'),
       ammoText: document.getElementById('hud-ammo'),
       hitMarker: document.getElementById('hit-marker'),
+      cannonHint: document.getElementById('cannon-hint'),
+      damage: document.getElementById('damage-vignette'),
     };
     return els;
   }
@@ -106,7 +108,39 @@ var HUD = (function () {
     el.classList.add('hit-flash');
   }
 
-  return { updateHUD: updateHUD, show: show, hide: hide, flashHit: flashHit };
+  // Red vignette when the player takes damage.
+  function flashDamage() {
+    var e = cache();
+    var el = e && e.damage;
+    if (!el) return;
+    el.classList.remove('hit-flash');
+    void el.offsetWidth;
+    el.classList.add('hit-flash');
+  }
+
+  var lastCannonHint = null;
+  // Contextual prompt near a fort cannon; null hides it.
+  function setCannonHint(text) {
+    var e = cache();
+    var el = e && e.cannonHint;
+    if (!el || text === lastCannonHint) return;
+    lastCannonHint = text;
+    if (text) {
+      el.textContent = text;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  }
+
+  return {
+    updateHUD: updateHUD,
+    show: show,
+    hide: hide,
+    flashHit: flashHit,
+    flashDamage: flashDamage,
+    setCannonHint: setCannonHint,
+  };
 })();
 
 if (typeof module !== 'undefined') module.exports = { HUD: HUD };

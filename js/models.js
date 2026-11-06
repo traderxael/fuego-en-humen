@@ -134,13 +134,14 @@ var Models = (function () {
     var thickness = 1.4;
     // Main adobe body
     g.add(box(length, h, thickness, 0xc9a06a, 0, h / 2, 0));
-    // Parapet lip
-    g.add(box(length, 0.5, thickness + 0.4, 0xb98f57, 0, h + 0.25, 0));
+    // Low parapet lip: keeps the top below eye height (1.7 m) so the player
+    // can see and fire over the seaward battery.
+    g.add(box(length, 0.2, thickness + 0.3, 0xb98f57, 0, h + 0.1, 0));
     // Crenellations: small blocks along the top
     var n = Math.max(3, Math.floor(length / 2));
     for (var i = 0; i < n; i++) {
       var x = -length / 2 + (i + 0.5) * (length / n);
-      g.add(box(0.7, 0.6, 0.5, 0xc9a06a, x, h + 0.8, 0));
+      g.add(box(0.7, 0.4, 0.5, 0xc9a06a, x, h + 0.4, 0));
     }
     g.userData = { type: 'fort-wall' };
     return g;

@@ -1,70 +1,33 @@
 // Enemy waves and AI: British landing force attacking the Humen fort.
-// Browser global `Enemies`; also guarded for Node tooling (never requires
-// THREE at import time — THREE is only touched inside functions, and only
-// when a scene is actually used).
+// Browser global `Enemies`; also guarded for Node tooling.
+//
+// Physics integration:
+//   Enemies.bindPhysics(physics) before spawnWave.
+//   Every soldier is a THREE.Group pivot (body centre y=0.9) whose visual is
+//   offset -0.9 so the feet sit on the ground. A cannon-es box body follows
+//   the pivot; AI steers body velocities, so walls, soldiers and knockback are
+//   resolved by the solver.
+//   Musket shots are real projectiles (spawned in physics); a soldier only
+//   fires when it has line of sight, otherwise it keeps advancing.
+//   Deaths ragdoll the body; the pivot stays as a corpse for CORPSE_SECONDS.
 //
 // Contract:
-//   Enemies.spawnWave(scene, waveDef, spawnInto, waveIndex) -> Array<Object3D>
-//     Creates the wave. `scene` is a THREE.Scene (or any Object3D parent).
-//     `waveDef` is one entry of WAVES: { count, interval, hp, damage }.
-//     `spawnInto` (optional but strongly recommended): the SAME array reference
-//       that was passed to createPlayer's `hooks.enemies`, so the player's
-//       raycast/melee sees the enemies. Spawned enemies are pushed into it;
-//       without it an internal list is used and the player will NOT see them.
-//     `waveIndex` (optional, 1-based): used to decide the wave>=2 artillery
-//       unit. Falls back to locating waveDef inside the WAVES global (or the
-//       CommonJS config), else 1.
-//     The first soldier spawns immediately; the rest trickle in one per
-//       `waveDef.interval` seconds, driven by updateEnemies. Waves >= 2 also
-//       get 1 artillery piece on the beach (fires every 6 s).
-//     Returns the array the enemies were pushed into.
+//   Enemies.bindPhysics(physics)
+//   Enemies.spawnWave(scene, waveDef, spawnInto, waveIndex) -> Array<pivot>
+//   Enemies.updateEnemies(dt, player, world, callbacks)
+//     callbacks.onEnemyDamagePlayer(dmg)   soldier melee hit the player
+//     callbacks.onEnemyDamageFort(dmg)     fallback melee channel
+//     callbacks.onEnemyReachWall(enemy)    soldier swinging at the parapet
+//     callbacks.onEnemyKilled(enemy)       enemy hp reached 0 (already removed)
+//     callbacks.effects                    js/effects.js instance (optional)
+//   Enemies.applyHit(enemy, damage, dir, point, kind) -> boolean
+//   Enemies.flashEnemy(enemy)
+//   Enemies.pendingSpawns() -> number
+//   Enemies.updateCorpses(dt)
 //
-//   Enemies.updateEnemies(dt, player, world, callbacks) -> void
-//     dt      : seconds since last frame (clamped internally).
-//     player  : the object returned by createPlayer (or any duck-typed object
-//               with `.enemies` and a camera: `.camera.position` is read as the
-//               player position; `.state` is read for fortIntegrity/phase).
-//     world   : the object returned by buildWorld ({ fort, ... }); the north
-//               parapet plane is derived from `world.fort.position.z - 14`
-//               (fort-local parapet offset); falls back to world z = 6.
-//     callbacks (all optional, all guarded):
-//       onEnemyDamagePlayer(dmg) - soldier shot / in-range melee hit the player
-//       onEnemyDamageFort(dmg)   - ARTILLERY round on the fort (8 dmg each); also
-//                                  the FALLBACK fort-melee channel, fired only
-//                                  when onEnemyReachWall is not provided
-//       onEnemyReachWall(enemy)  - soldier reached the parapet plane and melee'd it.
-//                                  Damage is carried on enemy.userData.damage
-//                                  (default 10); main.js routes this through the
-//                                  SAME fort-damage path (applyWaveDamage) as
-//                                  artillery. Exactly one of onEnemyReachWall /
-//                                  onEnemyDamageFort fires per soldier fort-melee
-//                                  swing (onEnemyReachWall wins when both exist).
-//       onEnemyKilled(enemy)     - enemy hp dropped to <= 0 (enemy already removed)
-//
-//   Enemies.flashEnemy(enemy) -> void  (emissive hit flash, ~80 ms; wired to
-//                                       the player's onEnemyHit hook in main.js)
-//   Enemies.pendingSpawns() -> number  (soldiers not yet trickled in; used by
-//                                       main.js to detect a cleared wave)
-//
-// Per-enemy behaviour:
-//   kind 'soldier': state machine 'advance' | 'shoot' | 'melee'.
-//     advance - steer toward the north parapet (per-enemy lateral offset so
-//               they don't stack); simple separation between nearby soldiers.
-//     shoot   - halted once within 30 m of the player; fires on a cooldown
-//               (damage via onEnemyDamagePlayer). Skipped entirely when the
-//               fort is already below LOW_FORT_INTEGRITY — the wave then makes
-//               a straight melee rush on the wall.
-//     melee   - within ~2.5 m of the player or of the north wall: attacks on
-//               a cooldown. Hits the player if in range (onEnemyDamagePlayer),
-//               otherwise the fort (onEnemyReachWall, or onEnemyDamageFort as
-//               fallback).
-//   kind 'artillery': static; every 6 s fires on the fort (onEnemyDamageFort(8)).
-//     90 hp. Spawned one per wave from wave 2 onward (in addition to the
-//     waveDef.count soldiers).
-//
-// Dead enemies (userData.hp <= 0) are removed from the scene AND spliced out
-// of the shared enemies array, then reported via callbacks.onEnemyKilled.
-// Wave-clear detection: `Enemies.pendingSpawns() === 0 && enemies.length === 0`.
+// Artillery: static cannon on the beach, one per wave from wave 2. Fires a
+// ballistic cannonball every ARTILLERY_INTERVAL seconds at the fort courtyard;
+// fort damage and player blast are applied by physics on impact.
 
 var Enemies = (function () {
   var steerFn = (typeof steerTowards !== 'undefined')
@@ -88,7 +51,7 @@ var Enemies = (function () {
   var MELEE_RANGE = 2.5;         // m from player or north wall: melee
   var WALL_HALF_SPAN = 18;       // aim at the middle 36 m of the 40 m parapet
   var SEPARATION_RADIUS = 1.4;   // m; push apart closer soldiers
-  var SEPARATION_PUSH = 0.9;     // m/s lateral shove
+  var SEPARATION_PUSH = 1.1;     // lateral shove (m/s at contact)
   var SHOOT_COOLDOWN = 2.6;      // s between soldier shots
   var MELEE_COOLDOWN = 1.1;      // s between melee swings
   var LOW_FORT_INTEGRITY = 50;   // below this soldiers rush the wall for melee
@@ -97,6 +60,16 @@ var Enemies = (function () {
   var ARTILLERY_DAMAGE = 8;      // fort damage per artillery round
   var FLASH_SECONDS = 0.08;      // 80 ms emissive hit flash
   var FLASH_HEX = 0xffdd66;
+  var CORPSE_SECONDS = 12;
+  var ENEMY_TURN_RATE = 5.0;     // rad/s
+  var ENEMY_ACCEL = 14;          // m/s^2 toward desired velocity
+  var ENEMY_DECEL = 18;
+  var ENEMY_SPREAD = 0.012;      // radians, musket dispersion
+  var ENEMY_MUZZLE_Y = 0.35;     // above the body centre -> world ~1.25 m
+  var ARTILLERY_TARGET = { minX: -14, maxX: 14, minZ: 8, maxZ: 16 };
+  var CENTER_Y = (typeof GamePhysics !== 'undefined' && GamePhysics.ENEMY_CENTER_Y) || 0.9;
+
+  var physicsRef = null;
 
   // Trickle-spawn state (one wave pending at a time; main.js spawns the next
   // wave only after the previous one is fully cleared).
@@ -107,9 +80,29 @@ var Enemies = (function () {
     waveDef: null,
     spawnInto: null,
     scene: null,
+    spawnedCount: 0,
+    spawnPoints: SPAWN_POINTS,
   };
 
+  var corpses = [];
+
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  function approach(value, target, maxDelta) {
+    if (value < target) return Math.min(value + maxDelta, target);
+    if (value > target) return Math.max(value - maxDelta, target);
+    return value;
+  }
+
+  function angleTowards(current, target, maxStep) {
+    if (typeof PhysicsLogic !== 'undefined' && PhysicsLogic.turnTowards) {
+      return PhysicsLogic.turnTowards(current, target, maxStep);
+    }
+    var delta = target - current;
+    return current + clamp(delta, -maxStep, maxStep);
+  }
+
+  function bindPhysics(physics) { physicsRef = physics; }
 
   function pendingSpawns() { return pending.remaining; }
 
@@ -125,6 +118,8 @@ var Enemies = (function () {
   }
 
   function playerPosition(player) {
+    var pb = player && player.physics && player.physics.playerBody;
+    if (pb && pb.position) return pb.position;
     var cam = player && player.camera;
     if (cam) {
       if (typeof cam.getWorldPosition === 'function' && typeof THREE !== 'undefined') {
@@ -132,7 +127,7 @@ var Enemies = (function () {
       }
       if (cam.position) return cam.position;
     }
-    if (player && player.position) return player.position; // duck-typed fallback
+    if (player && player.position) return player.position;
     return { x: 0, y: 1.7, z: 24 };
   }
 
@@ -140,7 +135,7 @@ var Enemies = (function () {
     if (world && world.fort && world.fort.position && typeof world.fort.position.z === 'number') {
       return world.fort.position.z - 14; // fort-local north parapet offset
     }
-    return 6; // known layout fallback: fort at z=20, parapet local z=-14
+    return 6;
   }
 
   function collectEmissiveMaterials(root) {
@@ -192,46 +187,70 @@ var Enemies = (function () {
     if (!ModelsRef || typeof ModelsRef.makeBritishSoldier !== 'function') {
       throw new Error('Enemies.spawnWave: Models.makeBritishSoldier unavailable');
     }
-    var s = ModelsRef.makeBritishSoldier();
-    s.userData.type = 'british-soldier'; // keep the model's tag
-    s.userData.kind = 'soldier';
-    s.userData.hp = waveDef.hp;
-    s.userData.damage = waveDef.damage;
-    s.userData.aiState = 'advance';
-    s.userData.cooldown = 0.5 + Math.random() * 1.2; // desync first volley
-    s.userData.offsetX = (Math.random() * 2 - 1) * 2.5; // lateral jitter at the parapet
-    s.userData.targetX = 0; // set from spawn point
-    return s;
+    var visual = ModelsRef.makeBritishSoldier();
+    visual.position.y = -CENTER_Y; // pivot sits at the body centre
+    var pivot = new THREE.Group();
+    pivot.add(visual);
+    pivot.position.y = CENTER_Y;
+    pivot.userData = {
+      type: 'british-soldier',
+      kind: 'soldier',
+      hp: waveDef.hp,
+      damage: waveDef.damage,
+      aiState: 'advance',
+      cooldown: 0.5 + Math.random() * 1.2, // desync first volley
+      offsetX: (Math.random() * 2 - 1) * 2.5,
+      targetX: 0,
+      yaw: Math.PI,
+      stagger: 0,
+      visual: visual,
+      dead: false,
+    };
+    return pivot;
   }
 
   function makeArtillery() {
     if (!ModelsRef || typeof ModelsRef.makeCannon !== 'function') {
       throw new Error('Enemies.spawnWave: Models.makeCannon unavailable');
     }
-    var c = ModelsRef.makeCannon();
-    c.userData.type = 'enemy-artillery';
-    c.userData.kind = 'artillery';
-    c.userData.hp = ARTILLERY_HP;
-    c.userData.damage = ARTILLERY_DAMAGE;
-    c.userData.cooldown = ARTILLERY_INTERVAL * 0.5; // first round lands sooner
-    return c;
+    var gun = ModelsRef.makeCannon();
+    gun.userData = {
+      type: 'enemy-artillery',
+      kind: 'artillery',
+      hp: ARTILLERY_HP,
+      damage: ARTILLERY_DAMAGE,
+      aiState: 'static',
+      cooldown: ARTILLERY_INTERVAL * 0.5, // first round lands sooner
+      yaw: Math.PI,
+      dead: false,
+    };
+    return gun;
   }
 
-  function placeAtSpawnPoint(enemy, spawnList, index) {
+  function placeSoldier(enemy, spawnList, index) {
     var sp = spawnList[index % spawnList.length];
     var jitterX = (Math.random() * 2 - 1) * 1.5;
     var jitterZ = (Math.random() * 2 - 1) * 2.0;
-    enemy.position.set(clamp(sp.x + jitterX, -30, 30), 0, sp.z + jitterZ);
+    enemy.position.set(clamp(sp.x + jitterX, -30, 30), CENTER_Y, sp.z + jitterZ);
     enemy.userData.targetX = clamp(sp.x, -WALL_HALF_SPAN, WALL_HALF_SPAN);
-    enemy.rotation.y = Math.PI; // model faces -Z; we want it facing the fort (+Z)
+    enemy.rotation.y = Math.PI; // model faces -Z; face the fort (+Z)
     return enemy;
+  }
+
+  function attachBody(enemy, kind) {
+    if (!physicsRef) return null;
+    var entry = physicsRef.addEnemyBody(enemy, kind);
+    enemy.userData.entry = entry;
+    enemy.userData.body = entry.body;
+    return entry;
   }
 
   function spawnIntoWave(scene, waveDef, into, spawnIndex) {
     var enemy = makeSoldier(waveDef);
-    placeAtSpawnPoint(enemy, pending.spawnPoints || SPAWN_POINTS, spawnIndex);
+    placeSoldier(enemy, pending.spawnPoints || SPAWN_POINTS, spawnIndex);
     scene.add(enemy);
     trackMaterials(enemy);
+    attachBody(enemy, 'soldier');
     if (into) into.push(enemy);
     return enemy;
   }
@@ -242,7 +261,6 @@ var Enemies = (function () {
     var into = Array.isArray(spawnInto) ? spawnInto : [];
     var index = resolveWaveIndex(waveDef, waveIndex);
 
-    // Reset pending trickle state for this wave.
     pending.waveDef = waveDef;
     pending.interval = waveDef.interval || 1;
     pending.timer = pending.interval;
@@ -250,11 +268,11 @@ var Enemies = (function () {
     pending.scene = scene;
     pending.spawnPoints = SPAWN_POINTS;
 
-    // Immediate first soldier so the wave is on the field right away.
     var first = makeSoldier(waveDef);
-    placeAtSpawnPoint(first, SPAWN_POINTS, Math.floor(Math.random() * SPAWN_POINTS.length));
+    placeSoldier(first, SPAWN_POINTS, Math.floor(Math.random() * SPAWN_POINTS.length));
     scene.add(first);
     trackMaterials(first);
+    attachBody(first, 'soldier');
     into.push(first);
     pending.remaining = Math.max(0, (waveDef.count || 0) - 1);
     pending.spawnedCount = 1;
@@ -268,23 +286,157 @@ var Enemies = (function () {
       gun.rotation.y = Math.PI; // barrel toward the fort
       scene.add(gun);
       trackMaterials(gun);
+      attachBody(gun, 'artillery');
       into.push(gun);
     }
 
     return into;
   }
 
+  // Hits are applied by main.js (projectiles and melee both route here).
+  function applyHit(enemy, damage, dir, point, kind) {
+    if (!enemy || !enemy.userData) return false;
+    var u = enemy.userData;
+    if (typeof u.hp !== 'number' || u.hp <= 0) return false;
+    u.hp -= damage;
+    flashEnemy(enemy);
+
+    var dx = dir && Number.isFinite(dir.x) ? dir.x : 0;
+    var dz = dir && Number.isFinite(dir.z) ? dir.z : 1;
+    var len = Math.hypot(dx, dz);
+    if (len < 1e-6) { dx = 0; dz = 1; len = 1; }
+    dx /= len;
+    dz /= len;
+    u.lastHitDir = { x: dx, z: dz };
+    u.stagger = Math.max(u.stagger || 0, 0.28);
+
+    var body = u.body;
+    if (body && u.kind === 'soldier') {
+      var strength = kind === 'cannon' ? 2.0 : (kind === 'sable' ? 2.4 : 0.7);
+      body.velocity.x += dx * strength;
+      body.velocity.z += dz * strength;
+    }
+    return true;
+  }
+
   function removeDead(list, i) {
     var enemy = list[i];
-    if (enemy.userData) enemy.userData.dead = true;
+    var u = enemy.userData || {};
+    u.dead = true;
+    var dir = u.lastHitDir || { x: 0, z: -1 };
+
+    // The corpse leaves the AI loop, so clear any hit-flash emissive here.
+    var mats = u.flashMats || [];
+    for (var m = 0; m < mats.length; m++) {
+      mats[m].m.emissive.setHex(mats[m].hex);
+      mats[m].m.emissiveIntensity = mats[m].intensity;
+    }
+    u.flashT = 0;
+
+    if (u.kind === 'soldier') {
+      if (physicsRef && u.entry) physicsRef.ragdoll(u.entry, dir.x, dir.z);
+      corpses.push({ enemy: enemy, timer: CORPSE_SECONDS });
+      list.splice(i, 1);
+      return enemy;
+    }
+
+    // Artillery: the gun is removed outright, with a debris burst.
+    if (physicsRef) {
+      physicsRef.spawnDebris(
+        { x: enemy.position.x, y: 0.8, z: enemy.position.z },
+        { x: 0, y: 1, z: 0 },
+        5
+      );
+      if (u.body) physicsRef.removeBody(u.body);
+    }
     if (enemy.parent) enemy.parent.remove(enemy);
     list.splice(i, 1);
     return enemy;
   }
 
+  function updateCorpses(dt) {
+    for (var i = corpses.length - 1; i >= 0; i--) {
+      var c = corpses[i];
+      c.timer -= dt;
+      if (c.timer > 0) continue;
+      var body = c.enemy && c.enemy.userData ? c.enemy.userData.body : null;
+      if (physicsRef && body) physicsRef.removeBody(body);
+      if (c.enemy && c.enemy.parent) c.enemy.parent.remove(c.enemy);
+      corpses.splice(i, 1);
+    }
+  }
+
+  function fireMusket(enemy, playerPos, effects) {
+    var body = enemy.userData.body;
+    if (!body) return;
+    var pos = body.position;
+    var eye = { x: pos.x, y: pos.y + ENEMY_MUZZLE_Y, z: pos.z };
+    // Aim at the upper body: a chest-flat shot would always hit the 1.3 m
+    // parapet, so British muskets clear it by aiming at the exposed torso/head.
+    var target = { x: playerPos.x, y: playerPos.y + 0.75, z: playerPos.z };
+    var dx = target.x - eye.x;
+    var dy = target.y - eye.y;
+    var dz = target.z - eye.z;
+    var len = Math.hypot(dx, dy, dz) || 1;
+    var dir = { x: dx / len, y: dy / len, z: dz / len };
+    var muzzle = {
+      x: eye.x + dir.x * 0.45,
+      y: eye.y + dir.y * 0.45,
+      z: eye.z + dir.z * 0.45,
+    };
+    if (physicsRef) {
+      physicsRef.fireMusket({
+        from: muzzle,
+        dir: dir,
+        spread: ENEMY_SPREAD,
+        damage: enemy.userData.damage || 10,
+        owner: 'enemy',
+      });
+    }
+    if (effects && typeof effects.muzzleFlash === 'function') {
+      effects.muzzleFlash(muzzle, dir);
+    }
+    flashEnemy(enemy);
+    if (typeof sfx !== 'undefined' && sfx && typeof sfx.enemyShot === 'function') {
+      sfx.enemyShot();
+    }
+  }
+
+  function fireArtillery(enemy, effects) {
+    enemy.updateMatrixWorld(true);
+    var muzzle = enemy.localToWorld(new THREE.Vector3(0, 0.87, -1.42));
+    var tx = ARTILLERY_TARGET.minX + Math.random() * (ARTILLERY_TARGET.maxX - ARTILLERY_TARGET.minX);
+    var tz = ARTILLERY_TARGET.minZ + Math.random() * (ARTILLERY_TARGET.maxZ - ARTILLERY_TARGET.minZ);
+    var target = { x: tx, y: 0.2, z: tz };
+    if (physicsRef) {
+      physicsRef.fireCannon({
+        from: { x: muzzle.x, y: muzzle.y, z: muzzle.z },
+        target: target,
+        owner: 'enemy',
+        speed: 62,
+        blastRadius: 3.4,
+        blastDamage: 25,
+        fortDamage: ARTILLERY_DAMAGE,
+      });
+    }
+    var dx = target.x - muzzle.x;
+    var dz = target.z - muzzle.z;
+    var len = Math.hypot(dx, dz) || 1;
+    var dir = { x: dx / len, y: 0.15, z: dz / len };
+    if (effects && typeof effects.muzzleFlash === 'function') {
+      effects.muzzleFlash(muzzle, dir, { big: true });
+    }
+    flashEnemy(enemy);
+    if (typeof sfx !== 'undefined' && sfx) {
+      if (typeof sfx.cannon === 'function') sfx.cannon();
+      else if (typeof sfx.enemyShot === 'function') sfx.enemyShot();
+    }
+  }
+
   function updateEnemies(dt, player, world, callbacks) {
     dt = clamp(dt || 0, 0, 0.1);
     callbacks = callbacks || {};
+    updateCorpses(dt);
     var enemies = (player && Array.isArray(player.enemies)) ? player.enemies : [];
     var playerPos = playerPosition(player);
     var wallZ = northWallZ(world);
@@ -292,13 +444,14 @@ var Enemies = (function () {
       ? player.state.fortIntegrity
       : 100;
     var wallRush = fortIntegrity < LOW_FORT_INTEGRITY;
+    var effects = callbacks.effects || null;
 
     // --- Trickle spawning ---
     if (pending.remaining > 0) {
       pending.timer -= dt;
       while (pending.timer <= 0 && pending.remaining > 0) {
         var idx = pending.spawnedCount || 0;
-        var soldier = spawnIntoWave(pending.scene, pending.waveDef, pending.spawnInto, idx);
+        spawnIntoWave(pending.scene, pending.waveDef, pending.spawnInto, idx);
         pending.spawnedCount = idx + 1;
         pending.remaining -= 1;
         pending.timer += pending.interval;
@@ -309,9 +462,9 @@ var Enemies = (function () {
     for (var i = enemies.length - 1; i >= 0; i--) {
       var enemy = enemies[i];
       if (!enemy || !enemy.userData) continue;
+      var u = enemy.userData;
 
-      // Killed by the player this frame (hp decremented in js/player.js).
-      if (typeof enemy.userData.hp === 'number' && enemy.userData.hp <= 0) {
+      if (typeof u.hp === 'number' && u.hp <= 0) {
         var deadEnemy = removeDead(enemies, i);
         if (typeof callbacks.onEnemyKilled === 'function') callbacks.onEnemyKilled(deadEnemy);
         continue;
@@ -319,101 +472,120 @@ var Enemies = (function () {
 
       tickFlash(enemy, dt);
 
-      var pos = enemy.position;
-      var dx = playerPos.x - pos.x;
-      var dz = playerPos.z - pos.z;
-      var distPlayer = Math.sqrt(dx * dx + dz * dz);
-      var distWall = wallZ - pos.z; // >0 while on the beach; 0 at the parapet
-
-      if (enemy.userData.kind === 'artillery') {
-        enemy.userData.cooldown -= dt;
-        if (enemy.userData.cooldown <= 0) {
-          enemy.userData.cooldown = ARTILLERY_INTERVAL;
-          flashEnemy(enemy); // muzzle flash
-          if (typeof sfx !== 'undefined') sfx.enemyShot(); // soft crack
-          if (typeof callbacks.onEnemyDamageFort === 'function') {
-            callbacks.onEnemyDamageFort(ARTILLERY_DAMAGE);
-          }
+      if (u.kind === 'artillery') {
+        u.cooldown -= dt;
+        if (u.cooldown <= 0) {
+          u.cooldown = ARTILLERY_INTERVAL;
+          fireArtillery(enemy, effects);
         }
         continue;
       }
 
-      // --- Soldier state machine ---
+      var body = u.body;
+      if (!body) continue;
+      var pos = body.position;
+      var dx = playerPos.x - pos.x;
+      var dz = playerPos.z - pos.z;
+      var distPlayer = Math.hypot(dx, dz);
+      var distWall = wallZ - pos.z;
+      var playerChest = { x: playerPos.x, y: playerPos.y + 0.35, z: playerPos.z };
+      var playerHead = { x: playerPos.x, y: playerPos.y + 0.75, z: playerPos.z };
+      var eye = { x: pos.x, y: pos.y + ENEMY_MUZZLE_Y, z: pos.z };
+      var canSeeChest = physicsRef
+        ? physicsRef.lineOfSight(eye, playerChest)
+        : true;
+      var canSeePlayer = physicsRef
+        ? physicsRef.lineOfSight(eye, playerHead)
+        : true;
       var atWall = distWall <= MELEE_RANGE;
-      var atPlayer = distPlayer <= MELEE_RANGE;
+      var atPlayer = distPlayer <= MELEE_RANGE && canSeeChest;
 
-      if (atPlayer || atWall) {
-        enemy.userData.aiState = 'melee';
-      } else if (!wallRush && distPlayer <= SHOOT_RANGE) {
-        enemy.userData.aiState = 'shoot';
-      } else {
-        enemy.userData.aiState = 'advance';
+      if (u.stagger > 0) {
+        u.stagger -= dt;
+        u.yaw = angleTowards(u.yaw, Math.atan2(dx, dz) + Math.PI, ENEMY_TURN_RATE * dt);
+        enemy.rotation.y = u.yaw;
+        body.quaternion.setFromEuler(0, u.yaw, 0);
+        continue;
       }
 
-      if (enemy.userData.aiState === 'advance') {
-        var tx = clamp((enemy.userData.targetX || 0) + (enemy.userData.offsetX || 0),
-          -WALL_HALF_SPAN, WALL_HALF_SPAN);
-        var dir = steerFn({ x: pos.x, z: pos.z }, { x: tx, z: wallZ });
-        pos.x += dir.x * SPEED * dt;
-        pos.z += dir.z * SPEED * dt;
-        enemy.rotation.y = Math.atan2(dir.x, dir.z) + Math.PI;
+      var desiredX = 0;
+      var desiredZ = 0;
 
-        // Simple separation: shove apart soldiers standing too close.
+      if (atPlayer || atWall) {
+        u.aiState = 'melee';
+        var face = atPlayer ? Math.atan2(dx, dz) + Math.PI : Math.PI;
+        u.yaw = angleTowards(u.yaw, face, ENEMY_TURN_RATE * dt);
+        u.cooldown -= dt;
+        if (u.cooldown <= 0) {
+          u.cooldown = MELEE_COOLDOWN;
+          if (atPlayer) {
+            if (typeof callbacks.onEnemyDamagePlayer === 'function') {
+              callbacks.onEnemyDamagePlayer(u.damage || 10);
+            }
+          } else {
+            if (typeof callbacks.onEnemyReachWall === 'function') {
+              callbacks.onEnemyReachWall(enemy);
+            } else if (typeof callbacks.onEnemyDamageFort === 'function') {
+              callbacks.onEnemyDamageFort(u.damage || 10);
+            }
+            if (effects && typeof effects.impact === 'function') {
+              effects.impact({ x: pos.x, y: 1.0, z: wallZ - 0.7 }, { x: 0, y: 0, z: -1 }, 'wall');
+            }
+          }
+        }
+      } else if (!wallRush && distPlayer <= SHOOT_RANGE && canSeePlayer) {
+        u.aiState = 'shoot';
+        u.yaw = angleTowards(u.yaw, Math.atan2(dx, dz) + Math.PI, ENEMY_TURN_RATE * dt);
+        u.cooldown -= dt;
+        if (u.cooldown <= 0) {
+          u.cooldown = SHOOT_COOLDOWN;
+          fireMusket(enemy, playerPos, effects);
+        }
+      } else {
+        u.aiState = 'advance';
+        var tx = clamp((u.targetX || 0) + (u.offsetX || 0), -WALL_HALF_SPAN, WALL_HALF_SPAN);
+        var dir = steerFn({ x: pos.x, z: pos.z }, { x: tx, z: wallZ });
+        desiredX = dir.x * SPEED;
+        desiredZ = dir.z * SPEED;
+
+        // Soft separation keeps the line from collapsing into one stack.
         for (var j = 0; j < enemies.length; j++) {
           if (j === i) continue;
           var other = enemies[j];
-          if (!other || !other.position) continue;
-          var ox = pos.x - other.position.x;
-          var oz = pos.z - other.position.z;
-          var od = Math.sqrt(ox * ox + oz * oz);
+          if (!other || !other.userData || !other.userData.body) continue;
+          var op = other.userData.body.position;
+          var ox = pos.x - op.x;
+          var oz = pos.z - op.z;
+          var od = Math.hypot(ox, oz);
           if (od > 0.0001 && od < SEPARATION_RADIUS) {
-            var push = (SEPARATION_RADIUS - od) * SEPARATION_PUSH * dt;
-            pos.x += (ox / od) * push;
-            pos.z += (oz / od) * push;
+            var push = (SEPARATION_RADIUS - od) * SEPARATION_PUSH;
+            desiredX += (ox / od) * push;
+            desiredZ += (oz / od) * push;
           }
         }
-      } else if (enemy.userData.aiState === 'shoot') {
-        // Stand still, face the player, fire on cooldown.
-        enemy.rotation.y = Math.atan2(dx, dz) + Math.PI;
-        enemy.userData.cooldown -= dt;
-        if (enemy.userData.cooldown <= 0) {
-          enemy.userData.cooldown = SHOOT_COOLDOWN;
-          flashEnemy(enemy); // muzzle flash (doubles as feedback)
-          if (typeof sfx !== 'undefined') sfx.enemyShot(); // soft crack
-          if (typeof callbacks.onEnemyDamagePlayer === 'function') {
-            callbacks.onEnemyDamagePlayer(enemy.userData.damage || 10);
-          }
-        }
-      } else { // melee
-        enemy.userData.cooldown -= dt;
-        // Face whatever we are swinging at.
-        if (atPlayer) enemy.rotation.y = Math.atan2(dx, dz) + Math.PI;
-        else enemy.rotation.y = Math.PI; // face the wall/fort
-        if (enemy.userData.cooldown <= 0) {
-          enemy.userData.cooldown = MELEE_COOLDOWN;
-          if (atPlayer) {
-            if (typeof callbacks.onEnemyDamagePlayer === 'function') {
-              callbacks.onEnemyDamagePlayer(enemy.userData.damage || 10);
-            }
-          } else if (typeof callbacks.onEnemyReachWall === 'function') {
-            // Soldier has reached the parapet: report the breach event; the
-            // caller routes the damage through its fort-damage path.
-            callbacks.onEnemyReachWall(enemy);
-          } else if (typeof callbacks.onEnemyDamageFort === 'function') {
-            // Fallback for callers that only know the damage-based channel.
-            callbacks.onEnemyDamageFort(enemy.userData.damage || 10);
-          }
-        }
+
+        u.yaw = angleTowards(u.yaw, Math.atan2(dir.x, dir.z) + Math.PI, ENEMY_TURN_RATE * dt);
       }
+
+      var wantsMove = Math.abs(desiredX) + Math.abs(desiredZ) > 0.05;
+      var rate = (wantsMove ? ENEMY_ACCEL : ENEMY_DECEL) * dt;
+      body.velocity.x = approach(body.velocity.x, desiredX, rate);
+      body.velocity.z = approach(body.velocity.z, desiredZ, rate);
+      enemy.rotation.y = u.yaw;
+      body.quaternion.setFromEuler(0, u.yaw, 0);
     }
   }
 
   return {
+    bindPhysics: bindPhysics,
     spawnWave: spawnWave,
     updateEnemies: updateEnemies,
+    applyHit: applyHit,
     flashEnemy: flashEnemy,
     pendingSpawns: pendingSpawns,
+    updateCorpses: updateCorpses,
     SPAWN_POINTS: SPAWN_POINTS,
+    CORPSE_SECONDS: CORPSE_SECONDS,
   };
 })();
 

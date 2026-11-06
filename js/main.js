@@ -2,7 +2,7 @@
   const canvas = document.getElementById('game-canvas');
 
   const state = createGameState();
-  // Debug globals only under ?debug=1 (headless smoke + later tasks).
+  // Debug globals only under ?debug=1 (headless smoke + verification).
   const DEBUG_MODE = window.location && /[?&]debug=1\b/.test(window.location.search);
   if (DEBUG_MODE) window.__state = state;
 
@@ -24,28 +24,55 @@
 
   const world = buildWorld(scene);
 
-  // Shared enemies array: passed to the player (raycast/melee targets) and
-  // filled by Enemies.spawnWave / maintained by Enemies.updateEnemies.
-  const enemies = [];
-  if (DEBUG_MODE) window.__enemies = enemies; // debug only: smoke tests / debugging
+  // Effects and the rigid-body world are created before the player/enemies:
+  // both modules need them, and the physics owns the shared player body.
+  const effects = Effects.create(scene, camera);
+  const physics = GamePhysics.create(scene, world, effects);
+  Enemies.bindPhysics(physics);
 
-  // Player spawns inside the fort, looking north toward the sea/beach/ships.
-  // (createPlayer owns the camera transform: eyes at 1.7 m, yaw 0 = -Z.)
+  // Shared enemies array: passed to the player and filled by Enemies.
+  const enemies = [];
+  if (DEBUG_MODE) window.__enemies = enemies;
+
+  function sfxCall(name) {
+    if (typeof sfx !== 'undefined' && sfx && typeof sfx[name] === 'function') {
+      try { sfx[name](); } catch (e) { /* audio is non-critical */ }
+    }
+  }
+
+  // Projectiles (physics) call with (enemy, damage, point, dir, kind);
+  // the player's melee calls with (enemy, damage, weaponKey, dir, point).
+  // Both end in Enemies.applyHit, which owns hp, flash, stagger and knockback.
+  function handleEnemyHit(enemy, damage, third, fourth, fifth) {
+    let dir;
+    let point;
+    let kind;
+    if (typeof third === 'string') {
+      kind = third === 'sable' ? 'sable' : 'musket';
+      dir = fourth;
+      point = fifth;
+    } else {
+      point = third;
+      dir = fourth;
+      kind = fifth || 'musket';
+    }
+    if (!Enemies.applyHit(enemy, damage, dir, point, kind)) return;
+    HUD.flashHit();
+    if (kind !== 'cannon') sfxCall('hit');
+  }
+
   const player = createPlayer(camera, canvas, {
     state: state,
     enemies: enemies,
-    onEnemyHit: function (enemy) {
-      Enemies.flashEnemy(enemy);
-      HUD.flashHit(); // brief white flash at the crosshair
-    },
+    physics: physics,
+    effects: effects,
+    world: world,
+    onEnemyHit: handleEnemyHit,
   });
 
   // Wave 1 is on the beach from the start (phase stays 'menu' until the user
   // clicks into pointer lock, at which point the game begins).
   Enemies.spawnWave(scene, WAVES[0], enemies, 1);
-
-  // Text spans / bars are owned by js/hud.js (per-frame updateHUD in animate);
-  // damage callbacks only mutate state.
 
   // Both damage-to-fort channels end in this one path.
   const fortDamaged = function (dmg) {
@@ -56,17 +83,48 @@
   };
 
   const enemyCallbacks = {
-    onEnemyDamagePlayer: playerDamaged,
-    // Artillery (and fallback channel for soldier melee if onEnemyReachWall is
-    // absent): raw fort damage.
+    effects: effects,
+    onEnemyDamagePlayer: function (dmg) {
+      playerDamaged(dmg);
+      HUD.flashDamage();
+      if (effects) effects.addShake(0.18);
+      sfxCall('hit');
+    },
     onEnemyDamageFort: fortDamaged,
-    // Soldier reached the parapet plane and melee'd it: route through the same
-    // fort-damage path.
     onEnemyReachWall: function (enemy) {
       const dmg = (enemy && enemy.userData && enemy.userData.damage) || 10;
       fortDamaged(dmg);
     },
-    onEnemyKilled: function () { state.score = (state.score || 0) + 100; },
+    onEnemyKilled: function (enemy) {
+      state.score = (state.score || 0) + 100;
+      if (enemy && enemy.userData && enemy.userData.kind === 'artillery') {
+        if (effects) {
+          effects.explosion({ x: enemy.position.x, y: 0.9, z: enemy.position.z });
+          effects.addShake(0.25);
+        }
+        sfxCall('explosion');
+      }
+    },
+  };
+
+  // Physics owns projectile/explosion damage routing. Enemy cannonballs hurt
+  // the fort only when they land inside its footprint (see GamePhysics).
+  const physicsCtx = {
+    onEnemyHit: handleEnemyHit,
+    onPlayerHit: function (damage, point, kind) {
+      playerDamaged(damage);
+      HUD.flashDamage();
+      if (effects) effects.addShake(kind === 'cannon' ? 0.55 : 0.14);
+      sfxCall('hit');
+    },
+    onWorldImpact: function () { /* visuals are owned by js/effects.js */ },
+    onExplosion: function () {
+      sfxCall('explosion');
+    },
+    onFortImpact: function (damage, point) {
+      fortDamaged(damage);
+      if (effects) effects.addShake(0.3);
+    },
   };
 
   // --- Menu start + end-of-game screens ---
@@ -80,16 +138,7 @@
     if (overlay) overlay.style.display = 'none';
   }
 
-  // Audio is optional: if js/audio.js failed to load, gameplay must continue.
-  function sfxCall(name) {
-    if (typeof sfx !== 'undefined' && sfx && typeof sfx[name] === 'function') {
-      try { sfx[name](); } catch (e) { /* audio is non-critical */ }
-    }
-  }
-
-  // Wave horn: exactly once per wave. Wave 1 is announced from the Jugar
-  // click (it spawns at load, before the AudioContext may exist); later waves
-  // from the spawn branch. The flag keeps either path from double-playing.
+  // Wave horn: exactly once per wave.
   let hornWave = 0;
   function playWaveHorn() {
     if (state.wave === hornWave) return;
@@ -101,12 +150,12 @@
   if (btnPlay) {
     btnPlay.addEventListener('click', function () {
       sfxCall('unlock'); // AudioContext must be created/resumed inside this gesture
-      sfxCall('ambientSea'); // quiet looped sea bed (idempotent)
+      sfxCall('ambientSea');
       Screens.hideMenu();
       hidePauseOverlay();
       HUD.show();
-      setPhase(state, 'playing'); // menu -> playing; onLockChange also asserts this
-      playWaveHorn(); // wave 1 (spawned at load, before the context existed)
+      setPhase(state, 'playing');
+      playWaveHorn();
       Screens.showIntroToast();
       try {
         const p = canvas.requestPointerLock();
@@ -115,9 +164,6 @@
     });
   }
 
-  // React to phase flips (victory/defeat can happen mid-frame inside
-  // updateEnemies/nextWave). Defeat cause is read at the flip, when we can
-  // still tell which pool hit 0.
   let lastPhase = state.phase;
   function onPhaseChanged(now) {
     if (now === 'playing') {
@@ -149,36 +195,47 @@
     const dt = Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
 
+    // 1. Player input -> body velocity + weapon fire (spawns projectiles).
     player.update(dt);
 
     if (state.phase === 'playing') {
-      // Enemy AI + spawn trickle; also detects a cleared wave and advances.
+      // 2. Enemy AI -> body velocities + enemy fire.
       Enemies.updateEnemies(dt, player, world, enemyCallbacks);
+      // 3. Rigid bodies, projectiles, impacts, corpses.
+      physics.step(dt, physicsCtx);
+      // 4. Particles and camera shake decay.
+      if (effects) effects.update(dt);
+      // 5. Camera from the post-step body position.
+      player.syncCamera(dt);
 
-      // Re-check phase: an enemy may have flipped it to 'defeat' mid-frame.
+      // Wave-clear detection after the physics step so the last corpse does
+      // not block the advance.
       if (state.phase === 'playing' && Enemies.pendingSpawns() === 0 && enemies.length === 0) {
         const prevWave = state.wave;
-        nextWave(state); // wave 3 clear -> phase 'victory'
+        nextWave(state);
         if (state.phase === 'playing' && state.wave !== prevWave) {
           Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
           playWaveHorn();
         }
       }
+    } else {
+      // Menu/paused: the world is frozen, but the camera still follows the
+      // settled body so the menu shows the fort from eye height.
+      player.syncCamera(dt);
     }
 
-    // Bars/counters/hit-marker-adjacent readout (cached; writes DOM on change only).
     HUD.updateHUD(state);
     if (state.phase !== lastPhase) {
       lastPhase = state.phase;
       onPhaseChanged(state.phase);
     }
 
-    // Gentle sea bob so the deck doesn't feel static (ships only).
-    world.ships.forEach((ship, i) => {
+    // Gentle sea bob so the ships do not feel static (ships only).
+    world.ships.forEach(function (ship, i) {
       const baseY = ship.userData.baseY !== undefined ? ship.userData.baseY : 0;
       ship.position.y = baseY + Math.sin(now / 1400 + i * 1.3) * 0.18;
     });
-    // Always render — when paused the world stays visible behind the overlay.
+
     renderer.render(scene, camera);
   }
   animate();
@@ -188,4 +245,24 @@
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
+
+  if (DEBUG_MODE) {
+    window.__player = player;
+    window.__physics = physics;
+    window.__effects = effects;
+    window.__camera = camera;
+    window.__world = world;
+    window.__game = {
+      state: state,
+      player: player,
+      physics: physics,
+      effects: effects,
+      enemies: enemies,
+      world: world,
+      camera: camera,
+      scene: scene,
+      renderer: renderer,
+      WAVES: WAVES,
+    };
+  }
 })();
