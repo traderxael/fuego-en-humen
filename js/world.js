@@ -47,8 +47,9 @@ var buildWorld = (function () {
     group.add(dirt);
 
     // --- Sea: plane beyond the beach (north, -Z) with transparency ---
+    // Waterline at z = -45 so the landing beach (spawns at z -38..-43) is dry.
     var sea = new THREE.Mesh(
-      new THREE.PlaneGeometry(300, 160),
+      new THREE.PlaneGeometry(300, 180),
       new THREE.MeshStandardMaterial({
         color: 0x2a6ea6,
         transparent: true,
@@ -58,7 +59,7 @@ var buildWorld = (function () {
       })
     );
     sea.rotation.x = -Math.PI / 2;
-    sea.position.set(0, 0.02, -90);
+    sea.position.set(0, 0.02, -135);
     sea.receiveShadow = true;
     group.add(sea);
 
@@ -75,12 +76,26 @@ var buildWorld = (function () {
     var parapetHeight = 1.3;
     var wallHeight = 4;
     var walls = [];
+    var colliders = []; // fort-local boxes for the physics world
+
+    function addFortCollider(localX, localZ, angle, length, thickness, height) {
+      colliders.push({
+        x: fort.position.x + localX,
+        z: fort.position.z + localZ,
+        angle: angle || 0,
+        length: length,
+        thickness: thickness,
+        height: height,
+      });
+    }
 
     // North battery parapet (sea side), ~40 wide, low enough to see/fire over
     var northWall = Models.makeFortWall(40, parapetHeight);
     northWall.position.set(0, 0, -14);
     fort.add(northWall);
     walls.push(northWall);
+    // Low seaward parapet: blocks bodies, lets musket balls clear its top.
+    addFortCollider(0, -14, 0, 40, 1.4, parapetHeight);
 
     // Horn arms extending toward the sea at both corners (the "U" opening)
     var westArm = Models.makeFortWall(10, wallHeight);
@@ -88,18 +103,21 @@ var buildWorld = (function () {
     westArm.position.set(-23, 0, -16);
     fort.add(westArm);
     walls.push(westArm);
+    addFortCollider(-23, -16, Math.PI / 3, 10, 1.4, wallHeight);
 
     var eastArm = Models.makeFortWall(10, wallHeight);
     eastArm.rotation.y = -Math.PI / 3;
     eastArm.position.set(23, 0, -16);
     fort.add(eastArm);
     walls.push(eastArm);
+    addFortCollider(23, -16, -Math.PI / 3, 10, 1.4, wallHeight);
 
     // South wall (behind player) - taller watchtower-ish, same builder
     var southWall = Models.makeFortWall(40, wallHeight + 1);
     southWall.position.set(0, 0, 14);
     fort.add(southWall);
     walls.push(southWall);
+    addFortCollider(0, 14, 0, 40, 1.4, wallHeight + 1);
 
     // West / East side walls (connecting north and south)
     var westWall = Models.makeFortWall(28, wallHeight);
@@ -107,12 +125,14 @@ var buildWorld = (function () {
     westWall.position.set(-20, 0, 0);
     fort.add(westWall);
     walls.push(westWall);
+    addFortCollider(-20, 0, Math.PI / 2, 28, 1.4, wallHeight);
 
     var eastWall = Models.makeFortWall(28, wallHeight);
     eastWall.rotation.y = Math.PI / 2;
     eastWall.position.set(20, 0, 0);
     fort.add(eastWall);
     walls.push(eastWall);
+    addFortCollider(20, 0, Math.PI / 2, 28, 1.4, wallHeight);
 
     // Small watchtower at the south-west corner (non-interactive prop)
     var towerBase = new THREE.Mesh(
@@ -131,6 +151,7 @@ var buildWorld = (function () {
     towerRoof.rotation.y = Math.PI / 4;
     towerRoof.castShadow = true;
     fort.add(towerRoof);
+    addFortCollider(-18, 12, 0, 4, 4, 7);
 
     group.add(fort);
 
@@ -148,6 +169,8 @@ var buildWorld = (function () {
       // Barrel of makeCannon points along -Z (north, toward the sea) — no flip needed
       fort.add(cannon);
       cannons.push(cannon);
+      // Carriage + barrel footprint, slightly back from the muzzle.
+      addFortCollider(cannonPositions[c].x, cannonPositions[c].z - 0.4, 0, 0.8, 2.4, 1.1);
     }
 
     // --- Ships: 3 anchored offshore beyond the beach ---
@@ -167,7 +190,7 @@ var buildWorld = (function () {
       ships.push(ship);
     }
 
-    return { fort: fort, walls: walls, sea: sea, ships: ships, cannons: cannons };
+    return { fort: fort, walls: walls, sea: sea, ships: ships, cannons: cannons, colliders: colliders };
   }
 
   return buildWorld;
