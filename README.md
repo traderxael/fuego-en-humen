@@ -17,6 +17,12 @@ Todo el juego es original: los modelos 3D low-poly están construidos con primit
 
 ## Cómo jugar
 
+Opción 0 — jugar online (GitHub Pages, se actualiza solo al pushear a `main`):
+
+    https://traderxael.github.io/fuego-en-humen/
+
+Con `?debug=1` al final de la URL se exponen `window.__game`, `__state`, `__physics` y `__enemies` para probar el juego desde la consola.
+
 Opción 1 — abrir directamente:
 
     index.html
