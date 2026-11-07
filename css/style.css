@@ -471,6 +471,22 @@ body {
   box-shadow: 0 0 34px rgba(200, 68, 47, 0.35);
 }
 
+.btn-music {
+  display: block;
+  margin: 14px auto 0;
+  font-size: 13px;
+  letter-spacing: 2px;
+  padding: 10px 24px 9px;
+  color: var(--bone-dim);
+  border-color: var(--bone-dim);
+}
+.btn-music:hover,
+.btn-music:focus-visible {
+  background: var(--bone-dim);
+  color: var(--ink);
+  box-shadow: 0 0 24px rgba(232, 224, 207, 0.2);
+}
+
 .menu-credits {
   margin-top: 40px;
   font-size: 11px;

@@ -151,6 +151,7 @@
     btnPlay.addEventListener('click', function () {
       sfxCall('unlock'); // AudioContext must be created/resumed inside this gesture
       sfxCall('ambientSea');
+      sfxCall('music'); // "Al otro lado del río" — assets/audio/al_otro_lado_del_rio.mp3
       Screens.hideMenu();
       hidePauseOverlay();
       HUD.show();
@@ -161,6 +162,15 @@
         const p = canvas.requestPointerLock();
         if (p && typeof p.catch === 'function') p.catch(function () { /* headless / cooldown */ });
       } catch (e) { /* pointer lock unavailable (e.g. headless) */ }
+    });
+  }
+
+  const btnMusic = document.getElementById('btn-music');
+  if (btnMusic) {
+    btnMusic.addEventListener('click', function (ev) {
+      if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+      sfxCall('unlock');
+      sfxCall('toggleMusic');
     });
   }
 

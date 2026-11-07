@@ -18,6 +18,35 @@ var sfx = (function () {
   var unlocked = false;
   var seaStarted = false;
 
+  // --- Music: "Al otro lado del río" (assets/audio/al_otro_lado_del_rio.mp3) ---
+  var MUSIC_URL = 'assets/audio/al_otro_lado_del_rio.mp3';
+  var MUSIC_LEVEL = 0.35;
+  var bgMusic = null;
+  var musicStarted = false;
+
+  function music() {
+    if (musicStarted) {
+      if (bgMusic && bgMusic.paused) { try { bgMusic.play(); } catch (e) {} }
+      return bgMusic;
+    }
+    if (typeof window === 'undefined' || typeof window.Audio !== 'function') return null;
+    try {
+      musicStarted = true;
+      bgMusic = new window.Audio(MUSIC_URL);
+      bgMusic.loop = true;
+      bgMusic.volume = MUSIC_LEVEL;
+      bgMusic.preload = 'auto';
+      var p = bgMusic.play();
+      if (p && typeof p.catch === 'function') p.catch(function () {});
+    } catch (e) {
+      bgMusic = null;
+    }
+    return bgMusic;
+  }
+  function stopMusic() { try { if (bgMusic) bgMusic.pause(); } catch (e) {} }
+  function setMusicVolume(v) { try { var n = Number(v); if (!Number.isFinite(n)) return; MUSIC_LEVEL = Math.max(0, Math.min(1, n)); if (bgMusic) bgMusic.volume = MUSIC_LEVEL; } catch (e) {} }
+  function toggleMusic() { if (!bgMusic) return music(); try { if (bgMusic.paused) bgMusic.play(); else bgMusic.pause(); } catch (e) {} return bgMusic; }
+
   function audioCtor() {
     if (typeof window === 'undefined') return null;
     return window.AudioContext || window.webkitAudioContext || null;
@@ -278,6 +307,10 @@ var sfx = (function () {
 
   return {
     unlock: unlock,
+    music: music,
+    stopMusic: stopMusic,
+    setMusicVolume: setMusicVolume,
+    toggleMusic: toggleMusic,
     shot: shot,
     enemyShot: enemyShot,
     swish: swish,
