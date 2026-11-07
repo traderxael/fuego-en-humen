@@ -23,8 +23,10 @@ var sfx = (function () {
   var MUSIC_LEVEL = 0.35;
   var bgMusic = null;
   var musicStarted = false;
+  var musicMuted = false;
 
   function music() {
+    if (musicMuted) return bgMusic;
     if (musicStarted) {
       if (bgMusic && bgMusic.paused) { try { bgMusic.play(); } catch (e) {} }
       return bgMusic;
@@ -34,7 +36,7 @@ var sfx = (function () {
       musicStarted = true;
       bgMusic = new window.Audio(MUSIC_URL);
       bgMusic.loop = true;
-      bgMusic.volume = MUSIC_LEVEL;
+      bgMusic.volume = musicMuted ? 0 : MUSIC_LEVEL;
       bgMusic.preload = 'auto';
       var p = bgMusic.play();
       if (p && typeof p.catch === 'function') p.catch(function () {});
@@ -44,8 +46,10 @@ var sfx = (function () {
     return bgMusic;
   }
   function stopMusic() { try { if (bgMusic) bgMusic.pause(); } catch (e) {} }
-  function setMusicVolume(v) { try { var n = Number(v); if (!Number.isFinite(n)) return; MUSIC_LEVEL = Math.max(0, Math.min(1, n)); if (bgMusic) bgMusic.volume = MUSIC_LEVEL; } catch (e) {} }
-  function toggleMusic() { if (!bgMusic) return music(); try { if (bgMusic.paused) bgMusic.play(); else bgMusic.pause(); } catch (e) {} return bgMusic; }
+  function setMusicVolume(v) { try { var n = Number(v); if (!Number.isFinite(n)) return; MUSIC_LEVEL = Math.max(0, Math.min(1, n)); if (bgMusic) bgMusic.volume = musicMuted ? 0 : MUSIC_LEVEL; } catch (e) {} }
+  function isMuted() { return !!musicMuted; }
+  function toggleMusic() { musicMuted = !musicMuted; try { if (typeof localStorage !== 'undefined') localStorage.setItem('fuego-music-muted', musicMuted ? '1' : '0'); } catch (e) {} if (!bgMusic) return musicMuted ? null : music(); try { if (musicMuted) bgMusic.pause(); else { bgMusic.volume = MUSIC_LEVEL; bgMusic.play(); } } catch (e) {} return bgMusic; }
+  function setMuted(v) { var want = v === true; if (want === musicMuted) return; toggleMusic(); }
 
   function audioCtor() {
     if (typeof window === 'undefined') return null;
@@ -311,6 +315,8 @@ var sfx = (function () {
     stopMusic: stopMusic,
     setMusicVolume: setMusicVolume,
     toggleMusic: toggleMusic,
+    isMuted: isMuted,
+    setMuted: setMuted,
     shot: shot,
     enemyShot: enemyShot,
     swish: swish,

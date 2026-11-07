@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fuego en Humen</title>
-    <link rel="icon" href="data:," />
+    <meta name="description" content="FPS de navegador: defiende los fuertes de Humen (1841). Mosquete, sable, 3 oleadas. Música: Al otro lado del río." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E" />
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
@@ -23,7 +24,7 @@
         <div class="bar"><div id="hud-fort-bar" class="bar-fill bar-fort"></div></div>
         <span id="hud-fort" class="hud-note">Fuerte 100</span>
       </div>
-      <div class="hud-bottom-right"><span id="hud-ammo">Mosquete 1 / 1</span></div>
+      <div class="hud-bottom-right"><span id="hud-ammo">Mosquete 1 / 1</span><span id="hud-score" class="hud-note" style="margin-top:6px;display:block">Puntuación 0</span><span id="hud-mission" class="hud-note" style="margin-top:2px;display:block;opacity:.85">Humen, 1841</span></div>
       <div id="crosshair"><div class="ch-ring"></div><div class="ch-dot"></div></div>
       <div id="hit-marker"></div>
       <div id="cannon-hint" class="hidden">E — Fuego de cañón</div>
@@ -42,7 +43,11 @@
         <div class="menu-rule"></div>
         <p class="menu-sub">Primera Guerra del Opio. Lin Zexu ha ordenado destruir el cargamento de opio británico.<br />Como represalia, la flota inglesa regresa para castigar al Imperio.<br />Tú eres un soldado qing en los fuertes. Que no caiga la muralla.</p>
         <button id="btn-play" class="btn-primary">Jugar</button>
-        <button id="btn-music" class="btn-primary btn-music" title="Activar / silenciar la música">♪ Música: Al otro lado del río</button>
+        <button id="btn-music" class="btn-primary btn-music" title="Activar / silenciar la música (tecla M)">♪ Música: Al otro lado del río</button>
+        <div class="controls-grid" aria-label="Controles">
+          <span><b>WASD</b> Moverse</span><span><b>Ratón</b> Mirar</span><span><b>Clic</b> Disparar</span>
+          <span><b>1/2</b> Arma</span><span><b>R</b> Recargar</span><span><b>M</b> Música</span><span><b>Shift</b> Correr</span><span><b>Esc</b> Pausa</span>
+        </div>
         <div class="menu-credits">Un homenaje a los defensores de Humen · Three.js · Música: "Al otro lado del río" (assets/audio/al_otro_lado_del_rio.mp3)</div>
       </div>
     </div>

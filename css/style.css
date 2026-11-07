@@ -487,6 +487,23 @@ body {
   box-shadow: 0 0 24px rgba(232, 224, 207, 0.2);
 }
 
+/* Mejoras HUD: score/misión + viñeta daño (sincronizado con rama misiones). */
+.hud-bottom-right { min-width: 180px; text-align: right; }
+#damage-vignette { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 56%, rgba(200,68,47,.55) 100%); }
+#damage-vignette.damage-flash { animation: damage-flash-anim .42s ease-out forwards; }
+@keyframes damage-flash-anim { 0% { opacity: .95; } 100% { opacity: 0; } }
+#hud.hud-low-hp .hud-top-left { border-color: rgba(200,68,47,.7); border-left-color: var(--red-bright); animation: hud-pulse .9s ease-in-out infinite; }
+@keyframes hud-pulse { 0%,100% { box-shadow: 0 2px 12px rgba(0,0,0,.6); } 50% { box-shadow: 0 2px 18px rgba(200,68,47,.45); } }
+.mission-picker { display: flex; gap: 12px; justify-content: center; margin: 0 0 22px; flex-wrap: wrap; }
+.mission-btn { font-family: Georgia,'Times New Roman',serif; font-size: 13px; line-height: 1.35; color: var(--bone-dim); background: rgba(16,13,10,.6); border: 1px solid rgba(201,162,39,.35); padding: 10px 18px; cursor: pointer; max-width: 280px; transition: border-color .18s, color .18s, background .18s; }
+.mission-btn:hover, .mission-btn:focus-visible { border-color: var(--ochre); color: var(--bone); outline: none; }
+.mission-btn.is-active { border-color: var(--ochre); color: var(--ochre); background: rgba(201,162,39,.12); }
+.mission-brief { display: block; font-size: 11px; font-style: italic; opacity: .8; margin-top: 3px; }
+.controls-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px 12px; margin: 18px auto 0; max-width: 680px; font-size: 12px; color: var(--bone-dim); text-align: left; }
+.controls-grid b { color: var(--ochre); }
+@media (max-width: 640px) { .hud-corner { width: 168px; } .hud-bottom-right { min-width: 0; font-size: 18px; } .controls-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+
 .menu-credits {
   margin-top: 40px;
   font-size: 11px;

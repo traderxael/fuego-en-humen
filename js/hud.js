@@ -7,7 +7,7 @@
 
 var HUD = (function () {
   var els = null;
-  var last = { hp: null, fort: null, wave: null, ammo: null };
+  var last = { hp: null, fort: null, wave: null, ammo: null, score: null, mission: null };
   var MAX_HP = (typeof PLAYER_HP !== 'undefined') ? PLAYER_HP : 100;
   var MAX_FORT = (typeof FORT_INTEGRITY !== 'undefined') ? FORT_INTEGRITY : 100;
 
@@ -24,6 +24,9 @@ var HUD = (function () {
       hitMarker: document.getElementById('hit-marker'),
       cannonHint: document.getElementById('cannon-hint'),
       damage: document.getElementById('damage-vignette'),
+      scoreText: document.getElementById('hud-score'),
+      missionText: document.getElementById('hud-mission'),
+      hudEl: document.getElementById('hud'),
     };
     return els;
   }
@@ -80,12 +83,18 @@ var HUD = (function () {
       last.ammo = ammoKey;
       if (e.ammoText) {
         e.ammoText.textContent = isMelee
-          ? 'Sable'
+          ? 'Sable · 1/2'
           : reloading
             ? 'Recargando…'
             : 'Mosquete ' + state.ammo + ' / ' + state.clipSize;
       }
     }
+
+    var score = (typeof state.score === 'number') ? state.score : 0;
+    if (score !== last.score) { last.score = score; if (e.scoreText) e.scoreText.textContent = 'Puntuación ' + score; }
+    var missionName = (typeof state.missionTitle === 'string') ? state.missionTitle : '';
+    if (missionName !== last.mission) { last.mission = missionName; if (e.missionText) e.missionText.textContent = missionName; }
+    try { if (e.hudEl) { var low = hp > 0 && hp / MAX_HP <= 0.3; e.hudEl.classList.toggle('hud-low-hp', low); } } catch (err) {}
   }
 
   function show() {

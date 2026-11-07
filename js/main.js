@@ -166,13 +166,25 @@
   }
 
   const btnMusic = document.getElementById('btn-music');
+  function syncMusicButton() {
+    if (!btnMusic) return;
+    var muted = false;
+    try { if (typeof sfx !== 'undefined' && sfx && typeof sfx.isMuted === 'function') muted = sfx.isMuted(); } catch (e) {}
+    btnMusic.textContent = muted ? '♪ Música: Silenciada (M)' : '♪ Música: Al otro lado del río (M)';
+    btnMusic.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    btnMusic.style.opacity = muted ? '0.65' : '1';
+  }
   if (btnMusic) {
     btnMusic.addEventListener('click', function (ev) {
       if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
       sfxCall('unlock');
       sfxCall('toggleMusic');
+      syncMusicButton();
     });
   }
+  window.addEventListener('keydown', function (e) { if (e.code === 'KeyM') { sfxCall('unlock'); sfxCall('toggleMusic'); syncMusicButton(); } });
+  try { state.missionTitle = 'Humen, 1841'; } catch (e) {}
+  syncMusicButton();
 
   let lastPhase = state.phase;
   function onPhaseChanged(now) {
