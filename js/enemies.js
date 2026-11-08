@@ -38,6 +38,36 @@ var Enemies = (function () {
     ? Models
     : (typeof require !== 'undefined' ? require('./models') : null);
 
+  var RigRef = (typeof Rig !== 'undefined')
+    ? Rig
+    : (typeof require !== 'undefined' ? require('./rig/humanoid') : null);
+
+  var AnimRef = (typeof RigAnim !== 'undefined')
+    ? RigAnim
+    : (typeof require !== 'undefined' ? require('./rig/anim') : null);
+
+  // Clips are stateless (they are a pure function of time), so one instance is
+  // shared by every soldier and the animator keeps its own clock.
+  var CLIP = {};
+  function clip(name) {
+    if (CLIP[name]) return CLIP[name];
+    if (!AnimRef) return null;
+    var C = AnimRef.Clips;
+    switch (name) {
+      case 'idle': CLIP[name] = C.idle(); break;
+      case 'walk': CLIP[name] = C.walk(1); break;
+      case 'aim': CLIP[name] = C.aim(); break;
+      case 'melee': CLIP[name] = C.melee(); break;
+      case 'fire': CLIP[name] = C.fire(); break;
+      case 'hit': CLIP[name] = C.hit(); break;
+      case 'death': CLIP[name] = C.death(); break;
+      case 'limp': CLIP[name] = C.limp(); break;
+      case 'kneel': CLIP[name] = C.kneel(); break;
+      default: return null;
+    }
+    return CLIP[name];
+  }
+
   var SPAWN_POINTS = [
     { x: -24, z: -40 },
     { x: -12, z: -43 },
@@ -87,6 +117,35 @@ var Enemies = (function () {
   var corpses = [];
 
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  // --- Animation ---------------------------------------------------------
+  // The rig follows the AI: marching while advancing, shouldered musket
+  // while shooting, bayonet thrust when it reaches the wall.
+  function updateEnemyAnim(enemy, dt, speed) {
+    var u = enemy.userData;
+    var anim = u.animator;
+    if (!anim) return;
+    var want = u.aiState === 'shoot' ? 'aim'
+      : u.aiState === 'melee' ? 'melee'
+        : 'advance';
+    if (want !== u.animState) {
+      u.animState = want;
+      if (want === 'melee') anim.play(clip('melee'), { fade: 0.12 });
+      else if (want === 'aim') anim.play(clip('aim'), { fade: 0.28 });
+      else anim.play(clip('walk'), { fade: 0.28 });
+    }
+    anim.speed = want === 'advance' ? clamp((speed || 0) / SPEED, 0.35, 2.4) : 1;
+    anim.update(dt);
+  }
+
+  // An officer on the field steadies the column: better aim, faster advance.
+  function officerAlive(enemies) {
+    for (var i = 0; i < enemies.length; i++) {
+      var e = enemies[i];
+      if (e && e.userData && e.userData.archetype === 'officer' && !e.userData.dead) return true;
+    }
+    return false;
+  }
 
   function approach(value, target, maxDelta) {
     if (value < target) return Math.min(value + maxDelta, target);
@@ -183,27 +242,44 @@ var Enemies = (function () {
     enemy.userData.flashT = 0;
   }
 
-  function makeSoldier(waveDef) {
-    if (!ModelsRef || typeof ModelsRef.makeBritishSoldier !== 'function') {
-      throw new Error('Enemies.spawnWave: Models.makeBritishSoldier unavailable');
+  // Archetypes of the landing force. The officer is the one whose fall
+  // breaks the momentum of the column.
+  var ARCHETYPES = {
+    rifleman: { variant: 'british', hp: 1, damage: 1, speed: 1, score: 100, label: 'Fusilero' },
+    marine: { variant: 'marine', hp: 1.3, damage: 1.15, speed: 1.25, score: 175, label: 'Royal Marine' },
+    officer: { variant: 'officer', hp: 1.9, damage: 1.25, speed: 1.1, score: 400, label: 'Oficial' },
+  };
+
+  function makeSoldier(waveDef, archetypeName) {
+    if (!RigRef || typeof RigRef.buildSoldier !== 'function') {
+      throw new Error('Enemies.spawnWave: Rig.buildSoldier unavailable');
     }
-    var visual = ModelsRef.makeBritishSoldier();
-    visual.position.y = -CENTER_Y; // pivot sits at the body centre
+    var arch = ARCHETYPES[archetypeName] || ARCHETYPES.rifleman;
+    var rig = RigRef.buildSoldier({ faction: 'british', variant: arch.variant });
+    rig.group.position.y = -CENTER_Y; // pivot sits at the body centre
     var pivot = new THREE.Group();
-    pivot.add(visual);
+    pivot.add(rig.group);
     pivot.position.y = CENTER_Y;
+    // The animator starts with no clip, so the march has to be started here:
+    // the AI only plays a new clip when the state actually changes.
+    var animator = AnimRef ? new AnimRef.Animator(rig) : null;
+    if (animator) animator.play(clip('walk'), { fade: 0 });
     pivot.userData = {
       type: 'british-soldier',
       kind: 'soldier',
-      hp: waveDef.hp,
-      damage: waveDef.damage,
+      hp: Math.round(waveDef.hp * arch.hp),
+      damage: Math.round(waveDef.damage * arch.damage),
       aiState: 'advance',
+      animState: 'advance',
       cooldown: 0.5 + Math.random() * 1.2, // desync first volley
       offsetX: (Math.random() * 2 - 1) * 2.5,
       targetX: 0,
       yaw: Math.PI,
       stagger: 0,
-      visual: visual,
+      rig: rig,
+      animator: animator,
+      archetype: archetypeName || 'rifleman',
+      score: arch.score,
       dead: false,
     };
     return pivot;
@@ -245,8 +321,14 @@ var Enemies = (function () {
     return entry;
   }
 
+  function archetypeFor(waveDef, index) {
+    var list = waveDef && waveDef.archetypes;
+    if (!list || !list.length) return 'rifleman';
+    return list[index % list.length];
+  }
+
   function spawnIntoWave(scene, waveDef, into, spawnIndex) {
-    var enemy = makeSoldier(waveDef);
+    var enemy = makeSoldier(waveDef, archetypeFor(waveDef, spawnIndex));
     placeSoldier(enemy, pending.spawnPoints || SPAWN_POINTS, spawnIndex);
     scene.add(enemy);
     trackMaterials(enemy);
@@ -268,7 +350,7 @@ var Enemies = (function () {
     pending.scene = scene;
     pending.spawnPoints = SPAWN_POINTS;
 
-    var first = makeSoldier(waveDef);
+    var first = makeSoldier(waveDef, archetypeFor(waveDef, 0));
     placeSoldier(first, SPAWN_POINTS, Math.floor(Math.random() * SPAWN_POINTS.length));
     scene.add(first);
     trackMaterials(first);
@@ -277,12 +359,15 @@ var Enemies = (function () {
     pending.remaining = Math.max(0, (waveDef.count || 0) - 1);
     pending.spawnedCount = 1;
 
-    // Objective artillery: 1 per wave from wave 2 onward (extra, on top of the
-    // soldier count — it is a gun crew, not a body to count against the wave).
-    if (index >= 2) {
+    // Objective artillery: a gun crew on the beach. It is not a body to
+    // count against the wave, but it is the priority target.
+    var gunCount = typeof waveDef.artillery === 'number'
+      ? waveDef.artillery
+      : (index >= 2 ? 1 : 0);
+    for (var gi = 0; gi < gunCount; gi++) {
       var gun = makeArtillery();
       var gx = (Math.random() * 2 - 1) * 20;
-      gun.position.set(gx, 0, -36 - Math.random() * 4);
+      gun.position.set(gx, 0, -36 - Math.random() * 4 - gi * 5);
       gun.rotation.y = Math.PI; // barrel toward the fort
       scene.add(gun);
       trackMaterials(gun);
@@ -309,6 +394,7 @@ var Enemies = (function () {
     dz /= len;
     u.lastHitDir = { x: dx, z: dz };
     u.stagger = Math.max(u.stagger || 0, 0.28);
+    if (u.animator) u.animator.playAdditive(clip('hit'), 1);
 
     var body = u.body;
     if (body && u.kind === 'soldier') {
@@ -335,6 +421,14 @@ var Enemies = (function () {
 
     if (u.kind === 'soldier') {
       if (physicsRef && u.entry) physicsRef.ragdoll(u.entry, dir.x, dir.z);
+      if (u.animator) {
+        u.animator.play(clip('death'), {
+          fade: 0.05,
+          onEnd: function () {
+            if (u.animator) u.animator.play(clip('limp'), { fade: 0.2 });
+          },
+        });
+      }
       corpses.push({ enemy: enemy, timer: CORPSE_SECONDS });
       list.splice(i, 1);
       return enemy;
@@ -396,6 +490,7 @@ var Enemies = (function () {
     if (effects && typeof effects.muzzleFlash === 'function') {
       effects.muzzleFlash(muzzle, dir);
     }
+    if (enemy.userData.animator) enemy.userData.animator.playAdditive(clip('fire'), 1);
     flashEnemy(enemy);
     if (typeof sfx !== 'undefined' && sfx && typeof sfx.enemyShot === 'function') {
       sfx.enemyShot();
@@ -444,6 +539,7 @@ var Enemies = (function () {
       ? player.state.fortIntegrity
       : 100;
     var wallRush = fortIntegrity < LOW_FORT_INTEGRITY;
+    var officer = officerAlive(enemies);
     var effects = callbacks.effects || null;
 
     // --- Trickle spawning ---
@@ -505,6 +601,7 @@ var Enemies = (function () {
         u.yaw = angleTowards(u.yaw, Math.atan2(dx, dz) + Math.PI, ENEMY_TURN_RATE * dt);
         enemy.rotation.y = u.yaw;
         body.quaternion.setFromEuler(0, u.yaw, 0);
+        updateEnemyAnim(enemy, dt, 0);
         continue;
       }
 
@@ -538,15 +635,16 @@ var Enemies = (function () {
         u.yaw = angleTowards(u.yaw, Math.atan2(dx, dz) + Math.PI, ENEMY_TURN_RATE * dt);
         u.cooldown -= dt;
         if (u.cooldown <= 0) {
-          u.cooldown = SHOOT_COOLDOWN;
+          u.cooldown = SHOOT_COOLDOWN * (officer ? 0.78 : 1);
           fireMusket(enemy, playerPos, effects);
         }
       } else {
         u.aiState = 'advance';
         var tx = clamp((u.targetX || 0) + (u.offsetX || 0), -WALL_HALF_SPAN, WALL_HALF_SPAN);
         var dir = steerFn({ x: pos.x, z: pos.z }, { x: tx, z: wallZ });
-        desiredX = dir.x * SPEED;
-        desiredZ = dir.z * SPEED;
+        var pace = SPEED * (officer ? 1.12 : 1);
+        desiredX = dir.x * pace;
+        desiredZ = dir.z * pace;
 
         // Soft separation keeps the line from collapsing into one stack.
         for (var j = 0; j < enemies.length; j++) {
@@ -573,6 +671,7 @@ var Enemies = (function () {
       body.velocity.z = approach(body.velocity.z, desiredZ, rate);
       enemy.rotation.y = u.yaw;
       body.quaternion.setFromEuler(0, u.yaw, 0);
+      updateEnemyAnim(enemy, dt, Math.hypot(body.velocity.x, body.velocity.z));
     }
   }
 

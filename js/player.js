@@ -78,6 +78,9 @@ var createPlayer = (function () {
     var preGrounded = true;
     var preFallSpeed = 0;
     var lastGrounded = true;
+    var aiming = false;      // right mouse: shoulder the musket
+    var sprinting = false;   // running with the musket held low
+    var lastFov = 0;
 
     // --- Weapon state ---
     var clips = { mosquete: WEAPONS.mosquete.clipSize }; // sable has no clip
@@ -122,50 +125,94 @@ var createPlayer = (function () {
       }
     }
 
-    // --- Viewmodels (primitive shapes attached to the camera) ---
+    // --- Viewmodel: a skinned pair of arms holding the musket -------------
+    // The rig is generated in code and posed by the animation library, so the
+    // reload, the recoil and the bayonet charge are all animated.
     var viewmodel = new THREE.Group();
     viewmodel.name = 'viewmodel';
     camera.add(viewmodel);
 
-    var musket = new THREE.Group();
-    var stock = new THREE.Mesh(
-      new THREE.BoxGeometry(0.09, 0.09, 0.62),
-      new THREE.MeshStandardMaterial({ color: 0x4a2f1d, roughness: 0.9 })
-    );
-    stock.position.set(0, 0, -0.08);
-    musket.add(stock);
-    var barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.022, 0.022, 0.55, 10),
-      new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.5, metalness: 0.7 })
-    );
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.055, -0.32);
-    musket.add(barrel);
-    viewmodel.add(musket);
+    var vmRig = null;
+    var vmAnim = null;
+    var vmMusket = null;
+    var vmSabre = null;
+    var vmState = 'idle';
 
-    var sable = new THREE.Group();
-    var blade = new THREE.Mesh(
-      new THREE.BoxGeometry(0.025, 0.055, 0.78),
-      new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.25, metalness: 0.9 })
-    );
-    blade.position.set(0, 0.02, -0.25);
-    blade.rotation.x = 0.12;
-    sable.add(blade);
-    var hilt = new THREE.Mesh(
-      new THREE.BoxGeometry(0.045, 0.12, 0.14),
-      new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.8 })
-    );
-    hilt.position.set(0, -0.02, 0.18);
-    sable.add(hilt);
-    viewmodel.add(sable);
+    var RigRef = (typeof Rig !== 'undefined')
+      ? Rig
+      : (typeof require !== 'undefined' ? require('./rig/humanoid') : null);
+    var AnimRef = (typeof RigAnim !== 'undefined')
+      ? RigAnim
+      : (typeof require !== 'undefined' ? require('./rig/anim') : null);
 
-    var VM_BASE = { x: 0.32, y: -0.30, z: -0.55 };
+    if (RigRef && AnimRef) {
+      vmRig = RigRef.buildViewmodel({});
+      vmRig.group.scale.setScalar(0.55);
+      // Camera space: the camera looks down -Z, so the arms have to sit in
+      // front of it (negative Z). These numbers put the musket grip at
+      // (0.22, -0.26, -0.55) in camera space.
+      vmRig.group.position.set(0.219, -1.565, -0.379);
+      vmRig.group.rotation.y = 0.15;
+      viewmodel.add(vmRig.group);
+      vmAnim = new AnimRef.Animator(vmRig);
+      vmAnim.play(AnimRef.Clips.vmIdle());
+      vmMusket = vmRig.weapon;
+
+      // The Qing saber (yanlingdao) rides on the same hand.
+      vmSabre = new THREE.Group();
+      var blade = new THREE.Mesh(
+        new THREE.BoxGeometry(0.03, 0.07, 0.86),
+        new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.22, metalness: 0.9 })
+      );
+      blade.position.set(0, 0.02, -0.38);
+      blade.rotation.x = 0.1;
+      var hilt = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.13, 0.15),
+        new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.8 })
+      );
+      hilt.position.set(0, -0.01, 0.06);
+      var guard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.11, 0.03, 0.05),
+        new THREE.MeshStandardMaterial({ color: 0x9a9aa2, roughness: 0.4, metalness: 0.7 })
+      );
+      guard.position.set(0, 0.03, -0.02);
+      vmSabre.add(blade, hilt, guard);
+      vmSabre.position.set(0, 0, 0.02);
+      vmSabre.visible = false;
+      vmRig.byName.weapon.add(vmSabre);
+    }
+
+    var VM_BASE = { x: 0, y: 0, z: 0 };
     viewmodel.position.set(VM_BASE.x, VM_BASE.y, VM_BASE.z);
     viewmodel.rotation.y = 0.08;
 
+    // The viewmodel clip follows the weapon and the situation: idle, aiming,
+    // sprinting, reloading or swinging.
+    function vmClip(name) {
+      if (!AnimRef) return null;
+      var C = AnimRef.Clips;
+      if (name === 'aim') return C.vmAim();
+      if (name === 'sprint') return C.vmSprint();
+      if (name === 'reload') return C.vmReload();
+      if (name === 'melee') return C.vmMelee();
+      return C.vmIdle();
+    }
+
+    function setVmState(next) {
+      if (!vmAnim || next === vmState) return;
+      vmState = next;
+      if (next === 'reload' || next === 'melee') return; // one shot clips
+      vmAnim.play(vmClip(next), { fade: 0.15 });
+    }
+
     function syncViewmodel() {
-      musket.visible = currentKey === 'mosquete';
-      sable.visible = currentKey === 'sable';
+      if (vmMusket) vmMusket.visible = currentKey === 'mosquete';
+      if (vmSabre) vmSabre.visible = currentKey === 'sable';
+      if (!vmAnim) return;
+      if (currentKey === 'sable') setVmState('idle');
+      else if (isReloading()) setVmState('reload');
+      else if (aiming) setVmState('aim');
+      else setVmState(sprinting ? 'sprint' : 'idle');
     }
 
     // --- Fort cannons (usable with E) ---
@@ -390,14 +437,16 @@ var createPlayer = (function () {
 
       if (def.type === 'melee') {
         meleeSwing = 0.32;
+        if (vmAnim) vmAnim.play(vmClip('melee'), { fade: 0.05 });
         hitMelee(def.damage, currentKey);
         sfxCall('swish');
       } else {
         if (typeof camera.updateMatrixWorld === 'function') camera.updateMatrixWorld(true);
         camera.getWorldDirection(forwardVec);
         rightVec.set(-forwardVec.z, 0, forwardVec.x);
-        var speed = Math.hypot(body.velocity.x, body.velocity.z);
+        var speed = Math.min(body.velocity.x * forwardVec.x + body.velocity.z * forwardVec.z, 7);
         var spread = !physics.isGrounded() ? AIR_SPREAD : (speed > 0.8 ? MOVING_SPREAD : STANDING_SPREAD);
+        if (aiming) spread *= 0.22;
         muzzlePoint.copy(camera.position)
           .addScaledVector(forwardVec, 0.55)
           .addScaledVector(rightVec, 0.13);
@@ -413,6 +462,7 @@ var createPlayer = (function () {
           effects.muzzleFlash(muzzlePoint, forwardVec);
           effects.addShake(0.05);
         }
+        if (vmAnim && AnimRef) vmAnim.playAdditive(AnimRef.Clips.vmFire(), 1);
         recoil = 1;
         pitchKick += 0.018 + Math.random() * 0.012;
         yawKick += (Math.random() - 0.5) * 0.01;
@@ -427,13 +477,29 @@ var createPlayer = (function () {
     function reload() {
       if (state.phase !== 'playing') return false;
       var started = startReload(currentKey, state);
-      if (started) sfxCall('reload');
+      if (started) {
+        sfxCall('reload');
+        if (vmAnim && currentKey === 'mosquete') {
+          vmAnim.play(vmClip('reload'), { fade: 0.08 });
+          vmState = 'reload';
+        }
+      }
       syncStateAmmo();
+      syncViewmodel();
       return started;
     }
 
-    function switchWeapon(i) {
-      if (state.phase !== 'playing') return currentKey;
+    // A resupply from the fort's magazine (the "munición" signal).
+    function refillAmmo() {
+      var def = weaponDef();
+      if (!def || def.type === 'melee') return false;
+      clips[currentKey] = def.clipSize;
+      state.reloadingUntil = 0;
+      syncStateAmmo();
+      return true;
+    }
+
+    function switchWeapon(i) {      if (state.phase !== 'playing') return currentKey;
       var next = null;
       if (i === 1 || i === '1' || i === 'mosquete') next = 'mosquete';
       else if (i === 2 || i === '2' || i === 'sable') next = 'sable';
@@ -447,6 +513,13 @@ var createPlayer = (function () {
     if (typeof document !== 'undefined') {
       domElement.addEventListener('mousedown', function (e) {
         if (e.button === 0) shoot();
+        else if (e.button === 2) { aiming = true; syncViewmodel(); }
+      });
+      domElement.addEventListener('mouseup', function (e) {
+        if (e.button === 2) { aiming = false; syncViewmodel(); }
+      });
+      domElement.addEventListener('contextmenu', function (e) {
+        if (e.preventDefault) e.preventDefault();
       });
     }
 
@@ -511,6 +584,7 @@ var createPlayer = (function () {
       // Head bob + footstep cadence.
       var horizontalSpeed = Math.hypot(body.velocity.x, body.velocity.z);
       var moving = horizontalSpeed > 0.4 && preGrounded;
+      sprinting = !!(run && input && horizontalSpeed > 3.2 && !aiming);
       bobBlend = approach(bobBlend, moving ? 1 : 0, dt * 6);
       if (moving) bobPhase += horizontalSpeed * dt * 1.9;
       stepAccum += (moving ? horizontalSpeed : 0) * dt;
@@ -542,6 +616,16 @@ var createPlayer = (function () {
       viewmodel.rotation.z = meleeSwing > 0
         ? Math.sin((0.32 - meleeSwing) / 0.32 * Math.PI) * 0.5
         : 0;
+
+      // Shouldering the musket narrows the view; the first person arms follow.
+      var targetFov = aiming ? 52 : 75;
+      if (targetFov !== lastFov) {
+        camera.fov = targetFov;
+        camera.updateProjectionMatrix();
+        lastFov = targetFov;
+      }
+      syncViewmodel();
+      if (vmAnim) vmAnim.update(dt);
 
       state.reloading = isReloading();
       return player;
@@ -589,6 +673,12 @@ var createPlayer = (function () {
       physics: physics,
       body: body,
       camera: camera,
+      viewmodel: viewmodel,
+      viewmodelAnim: vmAnim,
+      viewmodelRig: vmRig,
+      isReloading: isReloading,
+      refillAmmo: refillAmmo,
+      isAiming: function () { return aiming; },
       isGrounded: function () { return lastGrounded; },
       getActiveCannon: function () { return activeCannon; },
     };

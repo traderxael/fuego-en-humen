@@ -7,7 +7,7 @@
 
 var HUD = (function () {
   var els = null;
-  var last = { hp: null, fort: null, wave: null, ammo: null, score: null, mission: null };
+  var last = { hp: null, fort: null, wave: null, ammo: null, score: null, mission: null, objective: null, streak: null };
   var MAX_HP = (typeof PLAYER_HP !== 'undefined') ? PLAYER_HP : 100;
   var MAX_FORT = (typeof FORT_INTEGRITY !== 'undefined') ? FORT_INTEGRITY : 100;
 
@@ -25,7 +25,12 @@ var HUD = (function () {
       cannonHint: document.getElementById('cannon-hint'),
       damage: document.getElementById('damage-vignette'),
       scoreText: document.getElementById('hud-score'),
+      streakText: document.getElementById('hud-streak'),
       missionText: document.getElementById('hud-mission'),
+      objectiveText: document.getElementById('hud-objective'),
+      signalBox: document.getElementById('hud-signal'),
+      radioLine: document.getElementById('radio-line'),
+      beatCard: document.getElementById('beat-card'),
       hudEl: document.getElementById('hud'),
     };
     return els;
@@ -69,7 +74,13 @@ var HUD = (function () {
     if (wave !== last.wave) {
       last.wave = wave;
       var total = (typeof WAVES !== 'undefined' && WAVES.length) ? WAVES.length : 3;
-      if (e.waveText) e.waveText.textContent = 'Oleada ' + wave + '/' + total;
+      var def = (typeof WAVES !== 'undefined') ? WAVES[wave - 1] : null;
+      if (e.waveText) {
+        e.waveText.textContent = def && def.phase
+          ? def.phase + ' · ' + wave + '/' + total
+          : 'Fase ' + wave + '/' + total;
+      }
+      setObjective(def && def.objective ? def.objective : '');
     }
 
     // Ammo readout — hud.js owns this now (player.js no longer writes it).
@@ -142,6 +153,100 @@ var HUD = (function () {
     }
   }
 
+  // --- Objective ---------------------------------------------------------
+  function setObjective(text) {
+    var e = cache();
+    var el = e && e.objectiveText;
+    if (!el || text === last.objective) return;
+    last.objective = text;
+    el.textContent = text || '';
+    el.style.display = text ? 'block' : 'none';
+  }
+
+  // --- Streak ------------------------------------------------------------
+  function setStreak(multiplier) {
+    var e = cache();
+    var el = e && e.streakText;
+    if (!el) return;
+    var m = Math.round((multiplier || 1) * 100) / 100;
+    if (m === last.streak) return;
+    last.streak = m;
+    el.textContent = 'Racha ×' + m.toFixed(2).replace(/\.00$/, '');
+    el.style.color = m > 1.2 ? 'var(--ochre)' : '';
+  }
+
+  // --- Signal prompt -----------------------------------------------------
+  function showSignal(html) {
+    var e = cache();
+    var el = e && e.signalBox;
+    if (!el) return;
+    if (!html) {
+      el.classList.add('hidden');
+      return;
+    }
+    el.innerHTML = html;
+    el.classList.remove('hidden');
+  }
+
+  // --- Radio -------------------------------------------------------------
+  var radioTimer = 0;
+  function showRadio(speaker, text, seconds) {
+    var e = cache();
+    var el = e && e.radioLine;
+    if (!el) return;
+    if (!text) {
+      el.classList.add('hidden');
+      return;
+    }
+    var sp = el.querySelector('.radio-speaker');
+    var tx = el.querySelector('.radio-text');
+    if (sp) sp.textContent = speaker || '';
+    if (tx) tx.textContent = text;
+    el.classList.remove('hidden');
+    radioTimer = seconds || 6;
+  }
+
+  // --- Historical beat card ---------------------------------------------
+  var beatTimer = 0;
+  function showBeat(beat, seconds) {
+    var e = cache();
+    var el = e && e.beatCard;
+    if (!el) return;
+    if (!beat) {
+      el.classList.add('hidden');
+      return;
+    }
+    var tag = el.querySelector('.beat-tag');
+    var text = el.querySelector('.beat-text');
+    var source = el.querySelector('.beat-source');
+    if (tag) tag.textContent = beat.title || '';
+    if (text) text.textContent = beat.text || '';
+    if (source) source.textContent = beat.source || '';
+    el.classList.remove('hidden');
+    // Restart the entry animation.
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+    beatTimer = seconds || 9;
+  }
+
+  function tickTimers(dt) {
+    if (radioTimer > 0) {
+      radioTimer -= dt;
+      if (radioTimer <= 0) {
+        var e = cache();
+        if (e && e.radioLine) e.radioLine.classList.add('hidden');
+      }
+    }
+    if (beatTimer > 0) {
+      beatTimer -= dt;
+      if (beatTimer <= 0) {
+        var e2 = cache();
+        if (e2 && e2.beatCard) e2.beatCard.classList.add('hidden');
+      }
+    }
+  }
+
   return {
     updateHUD: updateHUD,
     show: show,
@@ -149,6 +254,12 @@ var HUD = (function () {
     flashHit: flashHit,
     flashDamage: flashDamage,
     setCannonHint: setCannonHint,
+    setObjective: setObjective,
+    setStreak: setStreak,
+    showSignal: showSignal,
+    showRadio: showRadio,
+    showBeat: showBeat,
+    tickTimers: tickTimers,
   };
 })();
 

@@ -17,18 +17,38 @@
         <div class="hud-label">Salud</div>
         <div class="bar"><div id="hud-health-bar" class="bar-fill bar-health"></div></div>
         <span id="hud-health" class="hud-note">HP 100</span>
+        <div id="hud-objective" class="hud-objective">Repele el desembarco</div>
       </div>
-      <div class="hud-top-center"><span id="hud-wave">Oleada 1/3</span></div>
+      <div class="hud-top-center"><span id="hud-wave">Fase 1/3</span></div>
       <div class="hud-corner hud-top-right">
         <div class="hud-label">Fuerte</div>
         <div class="bar"><div id="hud-fort-bar" class="bar-fill bar-fort"></div></div>
         <span id="hud-fort" class="hud-note">Fuerte 100</span>
       </div>
-      <div class="hud-bottom-right"><span id="hud-ammo">Mosquete 1 / 1</span><span id="hud-score" class="hud-note" style="margin-top:6px;display:block">Puntuación 0</span><span id="hud-mission" class="hud-note" style="margin-top:2px;display:block;opacity:.85">Humen, 1841</span></div>
+      <div class="hud-bottom-right"><span id="hud-ammo">Mosquete 1 / 1</span><span id="hud-score" class="hud-note" style="margin-top:6px;display:block">Puntuación 0</span><span id="hud-streak" class="hud-note" style="margin-top:2px;display:block;opacity:.85">Racha ×1</span><span id="hud-mission" class="hud-note" style="margin-top:2px;display:block;opacity:.85">Humen, 1841</span></div>
+      <div id="hud-signal" class="hud-signal hidden"></div>
       <div id="crosshair"><div class="ch-ring"></div><div class="ch-dot"></div></div>
       <div id="hit-marker"></div>
       <div id="cannon-hint" class="hidden">E — Fuego de cañón</div>
       <div id="damage-vignette"></div>
+      <div id="radio-line" class="hidden"><span class="radio-speaker"></span><span class="radio-text"></span></div>
+      <div id="beat-card" class="hidden">
+        <div class="beat-tag"></div>
+        <div class="beat-text"></div>
+        <div class="beat-source"></div>
+      </div>
+    </div>
+
+    <!-- Cinematics: letterbox, historical cards and subtitles -->
+    <div id="cinematic" aria-hidden="true">
+      <div class="cine-bar cine-top"></div>
+      <div class="cine-bar cine-bottom"></div>
+      <div id="cine-caption" class="hidden">
+        <div class="cine-caption-tag"></div>
+        <div class="cine-caption-text"></div>
+        <div class="cine-caption-source"></div>
+      </div>
+      <div id="cine-subtitle" class="hidden"><span class="cine-speaker"></span><span class="cine-line"></span></div>
     </div>
 
     <div id="intro-toast">Humen, 1841 — Los británicos desembarcan. ¡A las murallas!</div>
@@ -52,13 +72,28 @@
       </div>
     </div>
 
+    <!-- Briefing: the historical frame before the mission -->
+    <div id="briefing-screen" class="screen hidden">
+      <div class="brief-inner">
+        <div class="brief-kicker" id="brief-kicker">Primera Guerra del Opio</div>
+        <h2 class="brief-title" id="brief-title">Los fuertes de Humen</h2>
+        <div class="brief-meta">
+          <span id="brief-date"></span><span id="brief-place"></span><span id="brief-unit"></span>
+        </div>
+        <div class="brief-body" id="brief-body"></div>
+        <div class="brief-facts" id="brief-facts"></div>
+        <button id="btn-deploy" class="btn-primary">Desplegar en la muralla</button>
+        <button id="btn-back" class="btn-link">Volver</button>
+      </div>
+    </div>
+
     <!-- Victory -->
     <div id="victory-screen" class="screen hidden">
       <div class="screen-inner">
         <div class="screen-kicker">Victoria</div>
-        <h1 class="screen-title screen-title-victory">El fuerte resiste.<br />Humen no cae.</h1>
+        <h1 class="screen-title screen-title-victory">Resististe hasta el último.<br />Humen cayó: el parte de 1841 no dice otra cosa.</h1>
         <div class="stats-row">
-          <div class="stat"><span id="stat-waves" class="stat-value">3</span><span class="stat-label">Oleadas repelidas</span></div>
+          <div class="stat"><span id="stat-waves" class="stat-value">3</span><span class="stat-label">Fases repelidas</span></div>
           <div class="stat"><span id="stat-score" class="stat-value">0</span><span class="stat-label">Puntuación</span></div>
         </div>
         <button id="btn-again" class="btn-primary">Jugar otra vez</button>
@@ -81,6 +116,11 @@
     <script src="js/logic/state.js"></script>
     <script src="js/logic/combat.js"></script>
     <script src="js/logic/physics.js"></script>
+    <script src="js/rig/humanoid.js"></script>
+    <script src="js/rig/anim.js"></script>
+    <script src="js/story/campaign.js"></script>
+    <script src="js/story/scenes.js"></script>
+    <script src="js/story/cinematics.js"></script>
     <script src="js/hud.js"></script>
     <script src="js/screens.js"></script>
     <script src="js/models.js"></script>

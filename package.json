@@ -1,0 +1,14 @@
+{
+  "name": "fuego-en-humen",
+  "version": "2.0.0",
+  "description": "FPS de navegador: la defensa de los fuertes de Humen (1841). Three.js + cannon-es, sin assets externos.",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/logic.test.js tests/physics.test.js tests/physics-world.test.js tests/enemies.test.js tests/rig.test.js",
+    "serve": "python -m http.server 8820"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

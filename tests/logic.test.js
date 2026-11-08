@@ -101,7 +101,21 @@ test('nextWave advances to the next wave while waves remain', () => {
 
 test('WAVES has exactly 3 entries with escalating counts', () => {
   assert.strictEqual(WAVES.length, 3);
-  assert.deepStrictEqual(WAVES.map((w) => w.count), [6, 9, 12]);
+  assert.deepStrictEqual(WAVES.map((w) => w.count), [7, 11, 15]);
+});
+
+test('WAVES entries describe a historical phase and match their archetypes', () => {
+  WAVES.forEach((w, i) => {
+    assert.ok(w.phase, 'phase ' + i + ' has a name');
+    assert.ok(w.date, 'phase ' + i + ' has a date');
+    assert.ok(w.objective, 'phase ' + i + ' has an objective');
+    assert.strictEqual(w.archetypes.length, w.count);
+  });
+  // Difficulty must escalate: hp, damage and density all grow.
+  assert.ok(WAVES[1].hp > WAVES[0].hp);
+  assert.ok(WAVES[2].hp > WAVES[1].hp);
+  assert.ok(WAVES[2].damage > WAVES[0].damage);
+  assert.ok(WAVES[1].interval < WAVES[0].interval);
 });
 
 test('WEAPONS defines mosquete and sable with combat stats', () => {

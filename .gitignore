@@ -2,3 +2,8 @@ node_modules/
 .DS_Store
 .superpowers/
 .tmp-*
+
+# QA artifacts: the Chrome profile used by the headless renders and the
+# screenshots they produce are not part of the game.
+tools/.chromeprofile/
+tools/shots/

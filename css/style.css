@@ -510,3 +510,277 @@ body {
   letter-spacing: 1px;
   color: #7a7263;
 }
+
+/* ============ Objetivos, rachas y señales ============ */
+
+.hud-objective {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(201, 162, 39, 0.22);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ochre);
+  text-transform: uppercase;
+  max-width: 215px;
+  line-height: 1.35;
+}
+
+.hud-signal {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid rgba(201, 162, 39, 0.5);
+  border-left: 3px solid var(--ochre);
+  padding: 8px 16px;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  color: var(--bone);
+  box-shadow: 0 3px 16px rgba(0, 0, 0, 0.65);
+  animation: hud-signal-in 0.3s ease-out;
+}
+
+.hud-signal b { color: var(--ochre); }
+
+@keyframes hud-signal-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Radio de la guarnición */
+#radio-line {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  transform: translateX(-50%);
+  max-width: 62vw;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--bone);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+  background: rgba(16, 13, 10, 0.55);
+  border-left: 2px solid var(--ochre);
+  border-right: 2px solid var(--ochre);
+  padding: 7px 18px;
+}
+
+.radio-speaker {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ochre);
+  margin-bottom: 3px;
+}
+
+/* Tarjeta de hecho histórico durante el combate */
+#beat-card {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  width: 340px;
+  max-width: 42vw;
+  background: var(--panel);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-left: 3px solid var(--ochre);
+  padding: 10px 14px 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+  animation: beat-in 0.45s ease-out;
+}
+
+.beat-tag {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ochre);
+  margin-bottom: 5px;
+}
+
+.beat-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--bone);
+}
+
+.beat-source {
+  margin-top: 6px;
+  font-size: 10.5px;
+  font-style: italic;
+  color: var(--bone-dim);
+}
+
+@keyframes beat-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============ Cinemáticas ============ */
+
+#cinematic {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  font-family: Georgia, 'Times New Roman', serif;
+  color: var(--bone);
+}
+
+.cine-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: #000;
+  transition: height 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cine-top { top: 0; }
+.cine-bottom { bottom: 0; }
+
+#cinematic.active .cine-bar { height: 11vh; }
+
+#cine-caption {
+  position: absolute;
+  left: 4vw;
+  bottom: 14vh;
+  width: 30vw;
+  max-width: 420px;
+  background: rgba(12, 10, 8, 0.72);
+  border-left: 3px solid var(--ochre);
+  padding: 12px 16px 14px;
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.7);
+  animation: beat-in 0.5s ease-out;
+}
+
+.cine-caption-tag {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ochre);
+  margin-bottom: 6px;
+}
+
+.cine-caption-text {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--bone);
+}
+
+.cine-caption-source {
+  margin-top: 7px;
+  font-size: 10.5px;
+  font-style: italic;
+  color: var(--bone-dim);
+}
+
+#cine-subtitle {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 13.5vh;
+  max-width: 70vw;
+  text-align: center;
+  font-size: 17px;
+  line-height: 1.45;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
+}
+
+.cine-speaker {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ochre);
+  margin-bottom: 4px;
+}
+
+/* ============ Briefing ============ */
+
+#briefing-screen {
+  overflow-y: auto;
+  align-items: flex-start;
+}
+
+.brief-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 48px 28px 56px;
+  text-align: left;
+}
+
+.brief-kicker {
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ochre);
+}
+
+.brief-title {
+  margin: 8px 0 10px;
+  font-size: 42px;
+  line-height: 1.05;
+  color: var(--bone);
+}
+
+.brief-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 13px;
+  color: var(--bone-dim);
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(201, 162, 39, 0.25);
+}
+
+.brief-body p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--bone);
+  max-width: 66ch;
+}
+
+.brief-facts {
+  margin: 18px 0 26px;
+  display: grid;
+  gap: 10px;
+}
+
+.brief-fact {
+  border-left: 2px solid rgba(201, 162, 39, 0.5);
+  padding: 2px 0 2px 12px;
+}
+
+.brief-fact-tag {
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ochre);
+}
+
+.brief-fact-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--bone-dim);
+}
+
+.brief-fact-source {
+  font-size: 10.5px;
+  font-style: italic;
+  color: rgba(184, 174, 153, 0.7);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--bone-dim);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  margin-left: 16px;
+  text-decoration: underline;
+}
+
+.btn-link:hover, .btn-link:focus-visible { color: var(--bone); }
