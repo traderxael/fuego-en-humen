@@ -74,6 +74,12 @@
   // clicks into pointer lock, at which point the game begins).
   Enemies.spawnWave(scene, WAVES[0], enemies, 1);
 
+  // The static GLB replaces the primitive soldier as soon as it decodes; when
+  // the page is opened from file:// the fetch fails and the primitives stay.
+  Models.loadBritishSoldierModel('assets/models/soldado-britanico-1841-rigged.glb', function () {
+    Enemies.refreshSoldierVisuals(enemies);
+  });
+
   // Both damage-to-fort channels end in this one path.
   const fortDamaged = function (dmg) {
     applyWaveDamage(state, dmg);
@@ -146,6 +152,51 @@
     sfxCall('waveHorn');
   }
 
+  // Dialogues helper: wave toasts come from js/dialogues.js when present,
+  // otherwise fall back to the default text baked in index.html.
+  function waveToastText(w) {
+    try {
+      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.waveToast === 'function') {
+        return DIALOGUES.waveToast(w);
+      }
+    } catch (e) {}
+    return undefined;
+  }
+
+  // Narrator voice (js/voice.js + js/dialogues.js narrator): Maestro Xu.
+  // Best-effort, silent no-op when speechSynthesis is unavailable.
+  function narrate(text) {
+    if (!text) return;
+    try {
+      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.tts) {
+        Voice.speak(text, { narratorTts: DIALOGUES.narrator.tts });
+      } else {
+        Voice.speak(text);
+      }
+    } catch (e) {}
+  }
+  function narrateWave(w) {
+    try {
+      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateWave === 'function') {
+        narrate(DIALOGUES.narrateWave(w));
+      }
+    } catch (e) {}
+  }
+  function narrateBriefing() {
+    try {
+      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.lines) {
+        narrate(DIALOGUES.narrator.lines.briefing);
+      }
+    } catch (e) {}
+  }
+  function narrateEnd(moment) {
+    try {
+      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateEnd === 'function') {
+        narrate(DIALOGUES.narrateEnd(moment));
+      }
+    } catch (e) {}
+  }
+
   const btnPlay = document.getElementById('btn-play');
   if (btnPlay) {
     btnPlay.addEventListener('click', function () {
@@ -157,7 +208,8 @@
       HUD.show();
       setPhase(state, 'playing');
       playWaveHorn();
-      Screens.showIntroToast();
+      Screens.showIntroToast(waveToastText(state.wave));
+      narrateBriefing();
       try {
         const p = canvas.requestPointerLock();
         if (p && typeof p.catch === 'function') p.catch(function () { /* headless / cooldown */ });
@@ -182,7 +234,27 @@
       syncMusicButton();
     });
   }
-  window.addEventListener('keydown', function (e) { if (e.code === 'KeyM') { sfxCall('unlock'); sfxCall('toggleMusic'); syncMusicButton(); } });
+  const btnVoice = document.getElementById('btn-voice');
+  function syncVoiceButton() {
+    if (!btnVoice) return;
+    var off = false;
+    try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.isEnabled === 'function') off = !Voice.isEnabled(); } catch (e) {}
+    btnVoice.textContent = off ? '🎙️ Voz: Silenciada (V)' : '🎙️ Voz: Maestro Xu (V)';
+    btnVoice.setAttribute('aria-pressed', off ? 'false' : 'true');
+    btnVoice.style.opacity = off ? '0.65' : '1';
+  }
+  if (btnVoice) {
+    btnVoice.addEventListener('click', function (ev) {
+      if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+      try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (e) {}
+      syncVoiceButton();
+    });
+  }
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'KeyM') { sfxCall('unlock'); sfxCall('toggleMusic'); syncMusicButton(); }
+    if (e.code === 'KeyV') { try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (err) {} syncVoiceButton(); }
+  });
+  syncVoiceButton();
   try { state.missionTitle = 'Humen, 1841'; } catch (e) {}
   syncMusicButton();
 
@@ -199,6 +271,7 @@
       exitPointerLockSafe();
       sfxCall('victory');
       Screens.showVictory({ wavesRepelled: WAVES.length, score: state.score || 0 });
+      narrateEnd('victory');
       return;
     }
     if (now === 'defeat') {
@@ -206,7 +279,9 @@
       hidePauseOverlay();
       exitPointerLockSafe();
       sfxCall('defeat');
-      Screens.showDefeat(Screens.detectDefeatCause(state));
+      var cause = Screens.detectDefeatCause(state);
+      Screens.showDefeat(cause);
+      narrateEnd(cause);
     }
   }
 
@@ -238,6 +313,8 @@
         if (state.phase === 'playing' && state.wave !== prevWave) {
           Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
           playWaveHorn();
+          Screens.showIntroToast(waveToastText(state.wave));
+          narrateWave(state.wave);
         }
       }
     } else {

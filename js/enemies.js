@@ -209,6 +209,24 @@ var Enemies = (function () {
     return pivot;
   }
 
+  function refreshSoldierVisuals(list) {
+    if (!Array.isArray(list) || !ModelsRef || typeof ModelsRef.makeBritishSoldier !== 'function') return 0;
+    var refreshed = 0;
+    for (var i = 0; i < list.length; i++) {
+      var enemy = list[i];
+      var u = enemy && enemy.userData;
+      if (!u || u.kind !== 'soldier' || u.dead) continue;
+      if (u.visual && u.visual.parent) u.visual.parent.remove(u.visual);
+      var visual = ModelsRef.makeBritishSoldier();
+      visual.position.y = -CENTER_Y;
+      enemy.add(visual);
+      u.visual = visual;
+      trackMaterials(enemy);
+      refreshed++;
+    }
+    return refreshed;
+  }
+
   function makeArtillery() {
     if (!ModelsRef || typeof ModelsRef.makeCannon !== 'function') {
       throw new Error('Enemies.spawnWave: Models.makeCannon unavailable');
@@ -334,6 +352,9 @@ var Enemies = (function () {
     u.flashT = 0;
 
     if (u.kind === 'soldier') {
+      if (ModelsRef && typeof ModelsRef.stopSoldierAnimation === 'function') {
+        ModelsRef.stopSoldierAnimation(u.visual);
+      }
       if (physicsRef && u.entry) physicsRef.ragdoll(u.entry, dir.x, dir.z);
       corpses.push({ enemy: enemy, timer: CORPSE_SECONDS });
       list.splice(i, 1);
@@ -481,6 +502,12 @@ var Enemies = (function () {
         continue;
       }
 
+      if (u.kind === 'soldier' && ModelsRef && typeof ModelsRef.updateSoldierAnimation === 'function') {
+        var animBody = u.body;
+        var animSpeed = animBody ? Math.hypot(animBody.velocity.x, animBody.velocity.z) : 0;
+        ModelsRef.updateSoldierAnimation(u.visual, dt, animSpeed, u.aiState);
+      }
+
       var body = u.body;
       if (!body) continue;
       var pos = body.position;
@@ -584,6 +611,7 @@ var Enemies = (function () {
     flashEnemy: flashEnemy,
     pendingSpawns: pendingSpawns,
     updateCorpses: updateCorpses,
+    refreshSoldierVisuals: refreshSoldierVisuals,
     SPAWN_POINTS: SPAWN_POINTS,
     CORPSE_SECONDS: CORPSE_SECONDS,
   };

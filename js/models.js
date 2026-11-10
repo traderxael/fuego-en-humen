@@ -2,6 +2,9 @@
 // Browser global script exposing `Models`; optional Node guard for tooling.
 
 var Models = (function () {
+  var britishTemplate = null;
+  var britishClips = null;
+
   function mat(color) {
     return new THREE.MeshStandardMaterial({ color: color, roughness: 0.9, metalness: 0.0 });
   }
@@ -74,7 +77,156 @@ var Models = (function () {
     return g;
   }
 
+  function fitToHeight(root, height) {
+    root.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(root);
+    var size = box.getSize(new THREE.Vector3());
+    if (size.y > 1e-6) root.scale.multiplyScalar(height / size.y);
+    root.updateMatrixWorld(true);
+    box.setFromObject(root);
+    var center = box.getCenter(new THREE.Vector3());
+    root.position.x -= center.x;
+    root.position.z -= center.z;
+    root.position.y -= box.min.y;
+    return root;
+  }
+
+  function findClip(pattern) {
+    if (!britishClips) return null;
+    for (var i = 0; i < britishClips.length; i++) {
+      if (pattern.test(britishClips[i].name)) return britishClips[i];
+    }
+    return null;
+  }
+
+  function rootSpeed(clip) {
+    if (!clip || !clip.duration) return 0;
+    var tracks = clip.tracks || [];
+    for (var i = 0; i < tracks.length; i++) {
+      var track = tracks[i];
+      if (track.name.indexOf('Hips') === -1 || !/\.position$/.test(track.name)) continue;
+      var values = track.values;
+      var min = Infinity;
+      var max = -Infinity;
+      for (var k = 2; k < values.length; k += 3) {
+        min = Math.min(min, values[k]);
+        max = Math.max(max, values[k]);
+      }
+      return (max - min) / clip.duration;
+    }
+    return 0;
+  }
+
+  // The clip advances the hips forward; the game already moves the pivot, so
+  // keep only the vertical bob to avoid foot-slide + snap at loop.
+  function stripRootMotion(clip) {
+    var tracks = clip.tracks || [];
+    for (var i = 0; i < tracks.length; i++) {
+      var track = tracks[i];
+      if (track.name.indexOf('Hips') === -1 || !/\.position$/.test(track.name)) continue;
+      var values = track.values;
+      var baseX = values[0];
+      var baseZ = values[2];
+      for (var k = 0; k < values.length; k += 3) {
+        values[k] = baseX;
+        values[k + 2] = baseZ;
+      }
+    }
+  }
+
+  function setSoldierAction(anim, name, fade) {
+    if (!anim || anim.current === name || !anim.actions[name]) return;
+    var next = anim.actions[name];
+    var previous = anim.current ? anim.actions[anim.current] : null;
+    next.reset();
+    next.enabled = true;
+    next.setEffectiveWeight(1);
+    next.play();
+    if (previous && previous !== next) next.crossFadeFrom(previous, fade || 0.2, false);
+    anim.current = name;
+  }
+
+  function setupSoldierAnim(model) {
+    if (!britishClips || !britishClips.length || typeof THREE.AnimationMixer !== 'function') return;
+    var walkClip = findClip(/jogging/i) || findClip(/walking/i);
+    var idleClip = findClip(/offensiveidle/i) || findClip(/idle/i);
+    var deathClip = findClip(/dying|death/i);
+    var mixer = new THREE.AnimationMixer(model);
+    var actions = {};
+    if (walkClip) actions.walk = mixer.clipAction(walkClip);
+    if (idleClip) actions.idle = mixer.clipAction(idleClip);
+    if (deathClip) actions.death = mixer.clipAction(deathClip);
+    var current = null;
+    if (actions.walk) {
+      actions.walk.play();
+      current = 'walk';
+    } else if (actions.idle) {
+      actions.idle.play();
+      current = 'idle';
+    }
+    model.userData.anim = {
+      mixer: mixer,
+      actions: actions,
+      current: current,
+      walkSpeed: walkClip && walkClip._rootSpeed > 0.1 ? walkClip._rootSpeed : 1.67,
+    };
+  }
+
+  function updateSoldierAnimation(model, dt, speed, state) {
+    var anim = model && model.userData && model.userData.anim;
+    if (!anim) return;
+    anim.mixer.update(dt);
+    var desired = speed > 0.35 ? 'walk' : 'idle';
+    if (!anim.actions[desired]) desired = anim.actions.walk ? 'walk' : (anim.actions.idle ? 'idle' : null);
+    if (!desired) return;
+    if (desired === 'walk' && anim.actions.walk) {
+      var natural = anim.walkSpeed || 1.67;
+      var scale = speed > 0.1 ? speed / natural : 1;
+      anim.actions.walk.setEffectiveTimeScale(Math.max(0.65, Math.min(1.8, scale)));
+    }
+    setSoldierAction(anim, desired, 0.18);
+  }
+
+  function stopSoldierAnimation(model) {
+    var anim = model && model.userData && model.userData.anim;
+    if (anim) anim.mixer.stopAllAction();
+  }
+
+  function loadBritishSoldierModel(url, onReady) {
+    if (typeof THREE === 'undefined' || !THREE.GLTFLoader) return;
+    var loader = new THREE.GLTFLoader();
+    loader.load(url, function (gltf) {
+      var root = gltf.scene;
+      root.rotation.y = Math.PI; // exported model faces +Z; game forward is -Z
+      fitToHeight(root, 1.92);
+      britishClips = gltf.animations || [];
+      for (var i = 0; i < britishClips.length; i++) {
+        var clip = britishClips[i];
+        clip._rootSpeed = rootSpeed(clip);
+        if (/jogging|walking/i.test(clip.name)) stripRootMotion(clip);
+      }
+      britishTemplate = root;
+      if (typeof onReady === 'function') onReady(root);
+    }, undefined, function (error) {
+      if (typeof console !== 'undefined') console.warn('No se pudo cargar el soldado británico GLB:', error);
+    });
+  }
+
   function makeBritishSoldier() {
+    if (britishTemplate && typeof THREE.SkeletonUtils !== 'undefined') {
+      var model = THREE.SkeletonUtils.clone(britishTemplate);
+      model.traverse(function (node) {
+        if (node.isMesh) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+          node.frustumCulled = false;
+          if (node.material) node.material = node.material.clone();
+        }
+      });
+      model.userData = { type: 'british-soldier' };
+      setupSoldierAnim(model);
+      return model;
+    }
     var g = new THREE.Group();
     // Red coat
     g.add(box(0.48, 1.0, 0.3, 0xb02a22, 0, 0.85, 0));
@@ -181,6 +333,9 @@ var Models = (function () {
   return {
     makeQingSoldier: makeQingSoldier,
     makeBritishSoldier: makeBritishSoldier,
+    loadBritishSoldierModel: loadBritishSoldierModel,
+    updateSoldierAnimation: updateSoldierAnimation,
+    stopSoldierAnimation: stopSoldierAnimation,
     makeShip: makeShip,
     makeFortWall: makeFortWall,
     makeCannon: makeCannon,

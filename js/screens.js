@@ -85,10 +85,12 @@ var Screens = (function () {
   }
 
   // Battle-start toast; CSS animation handles the 4 s auto-hide.
-  function showIntroToast() {
+  // Optional custom text so dialogues can drive wave / clear messages.
+  function showIntroToast(text) {
     var e = cache();
     var el = e && e.toast;
     if (!el) return;
+    if (text) el.textContent = text;
     el.classList.remove('toast-show');
     void el.offsetWidth;
     el.classList.add('toast-show');

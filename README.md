@@ -6,6 +6,8 @@ Controlas a un soldado patriota qing que defiende la posición costera de Humen 
 
 Todo el juego es original: los modelos 3D low-poly están construidos con primitivas (sin assets externos), los efectos de sonido se sintetizan con la Web Audio API y no hay ninguna dependencia de red — funciona sin conexión.
 
+El soldado británico incorpora además un GLB generado con Hyper3D Rodin, riggeado con 52 huesos y clips de jogging, idle de combate y muerte (`assets/models/soldado-britanico-1841-rigged.glb`), que se carga al servir el juego por HTTP (GitHub Pages o `npx serve .`); abierto directamente desde `file://`, el juego vuelve solo a las primitivas.
+
 ## Física
 
 - Jugador y soldados son cuerpos rígidos (cannon-es): inercia, gravedad, salto, colisiones deslizantes contra murallas y empujes entre cuerpos.

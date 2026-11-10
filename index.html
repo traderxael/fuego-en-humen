@@ -44,9 +44,10 @@
         <p class="menu-sub">Primera Guerra del Opio. Lin Zexu ha ordenado destruir el cargamento de opio británico.<br />Como represalia, la flota inglesa regresa para castigar al Imperio.<br />Tú eres un soldado qing en los fuertes. Que no caiga la muralla.</p>
         <button id="btn-play" class="btn-primary">Jugar</button>
         <button id="btn-music" class="btn-primary btn-music" title="Activar / silenciar la música (tecla M)">♪ Música: Al otro lado del río</button>
+        <button id="btn-voice" class="btn-primary btn-music" title="Activar / silenciar la voz del narrador (tecla V)">🎙️ Voz: Maestro Xu</button>
         <div class="controls-grid" aria-label="Controles">
           <span><b>WASD</b> Moverse</span><span><b>Ratón</b> Mirar</span><span><b>Clic</b> Disparar</span>
-          <span><b>1/2</b> Arma</span><span><b>R</b> Recargar</span><span><b>M</b> Música</span><span><b>Shift</b> Correr</span><span><b>Esc</b> Pausa</span>
+          <span><b>1/2</b> Arma</span><span><b>R</b> Recargar</span><span><b>M</b> Música</span><span><b>V</b> Voz</span><span><b>Shift</b> Correr</span><span><b>Esc</b> Pausa</span>
         </div>
         <div class="menu-credits">Un homenaje a los defensores de Humen · Three.js · Música: "Al otro lado del río" (assets/audio/al_otro_lado_del_rio.mp3)</div>
       </div>
@@ -76,7 +77,11 @@
     </div>
 
     <script src="vendor/three.min.js"></script>
+    <script src="vendor/GLTFLoader.js"></script>
+    <script src="vendor/SkeletonUtils.js"></script>
     <script src="vendor/cannon-es.min.js"></script>
+    <script src="js/dialogues.js"></script>
+    <script src="js/voice.js"></script>
     <script src="js/logic/config.js"></script>
     <script src="js/logic/state.js"></script>
     <script src="js/logic/combat.js"></script>
