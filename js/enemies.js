@@ -38,6 +38,10 @@ var Enemies = (function () {
     ? Models
     : (typeof require !== 'undefined' ? require('./models') : null);
 
+  var WaveLogicRef = (typeof WaveLogic !== 'undefined')
+    ? WaveLogic
+    : (typeof require !== 'undefined' ? require('./logic/waves') : null);
+
   var SPAWN_POINTS = [
     { x: -24, z: -40 },
     { x: -12, z: -43 },
@@ -183,20 +187,38 @@ var Enemies = (function () {
     enemy.userData.flashT = 0;
   }
 
-  function makeSoldier(waveDef) {
+  function makeSoldier(waveDef, enemyType) {
     if (!ModelsRef || typeof ModelsRef.makeBritishSoldier !== 'function') {
       throw new Error('Enemies.spawnWave: Models.makeBritishSoldier unavailable');
     }
-    var visual = ModelsRef.makeBritishSoldier();
+    var type = enemyType || 'soldier';
+    var builder = ModelsRef.makeBritishSoldier;
+    if (type === 'runner' && typeof ModelsRef.makeBritishRunner === 'function') {
+      builder = ModelsRef.makeBritishRunner;
+    } else if (type === 'officer' && typeof ModelsRef.makeBritishOfficer === 'function') {
+      builder = ModelsRef.makeBritishOfficer;
+    } else if (type === 'sepoy' && typeof ModelsRef.makeSepoy === 'function') {
+      builder = ModelsRef.makeSepoy;
+    }
+    var stats = WaveLogicRef
+      ? WaveLogicRef.resolveEnemyStats(waveDef, type)
+      : { hp: waveDef.hp, damage: waveDef.damage, speed: SPEED, canShoot: true, meleeCooldown: MELEE_COOLDOWN, score: 100 };
+    var visual = builder();
     visual.position.y = -CENTER_Y; // pivot sits at the body centre
     var pivot = new THREE.Group();
     pivot.add(visual);
     pivot.position.y = CENTER_Y;
     pivot.userData = {
       type: 'british-soldier',
+      // kind stays 'soldier': physics bodies, ragdoll and knockback are shared.
       kind: 'soldier',
-      hp: waveDef.hp,
-      damage: waveDef.damage,
+      enemyType: type,
+      hp: stats.hp,
+      damage: stats.damage,
+      speed: stats.speed,
+      canShoot: stats.canShoot,
+      meleeCooldown: stats.meleeCooldown,
+      score: stats.score,
       aiState: 'advance',
       cooldown: 0.5 + Math.random() * 1.2, // desync first volley
       offsetX: (Math.random() * 2 - 1) * 2.5,
@@ -209,18 +231,22 @@ var Enemies = (function () {
     return pivot;
   }
 
-  function makeArtillery() {
+  function makeArtillery(waveDef, gunIndex) {
     if (!ModelsRef || typeof ModelsRef.makeCannon !== 'function') {
       throw new Error('Enemies.spawnWave: Models.makeCannon unavailable');
     }
-    var gun = ModelsRef.makeCannon();
+    // Wave 5 fields a Congreve rocket rack instead of the first siege gun.
+    var rocket = !!(waveDef && waveDef.rockets) && gunIndex === 0 &&
+      typeof ModelsRef.makeRocketBattery === 'function';
+    var gun = rocket ? ModelsRef.makeRocketBattery() : ModelsRef.makeCannon();
     gun.userData = {
-      type: 'enemy-artillery',
+      type: rocket ? 'enemy-rockets' : 'enemy-artillery',
       kind: 'artillery',
       hp: ARTILLERY_HP,
-      damage: ARTILLERY_DAMAGE,
+      damage: rocket ? 6 : ARTILLERY_DAMAGE,
+      rocket: rocket,
       aiState: 'static',
-      cooldown: ARTILLERY_INTERVAL * 0.5, // first round lands sooner
+      cooldown: rocket ? 3.0 : ARTILLERY_INTERVAL * 0.5, // first round lands sooner
       yaw: Math.PI,
       dead: false,
     };
@@ -246,13 +272,33 @@ var Enemies = (function () {
   }
 
   function spawnIntoWave(scene, waveDef, into, spawnIndex) {
-    var enemy = makeSoldier(waveDef);
+    var type = WaveLogicRef ? WaveLogicRef.pickEnemyType(waveDef, spawnIndex) : 'soldier';
+    var enemy = makeSoldier(waveDef, type);
     placeSoldier(enemy, pending.spawnPoints || SPAWN_POINTS, spawnIndex);
     scene.add(enemy);
     trackMaterials(enemy);
     attachBody(enemy, 'soldier');
     if (into) into.push(enemy);
     return enemy;
+  }
+
+  // Campaign: a fresh mission starts from a clean enemy list.
+  function reset(list, scene, physics) {
+    pending.remaining = 0;
+    pending.waveDef = null;
+    pending.spawnInto = null;
+    pending.spawnedCount = 0;
+    pending.timer = 0;
+    if (!Array.isArray(list)) return;
+    for (var i = list.length - 1; i >= 0; i--) {
+      var enemy = list[i];
+      var data = (enemy && enemy.userData) || {};
+      if (data.body && physics && typeof physics.removeBody === 'function') {
+        try { physics.removeBody(data.body); } catch (error) { /* body already gone */ }
+      }
+      if (scene && enemy.parent) scene.remove(enemy);
+      list.splice(i, 1);
+    }
   }
 
   function spawnWave(scene, waveDef, spawnInto, waveIndex) {
@@ -268,7 +314,8 @@ var Enemies = (function () {
     pending.scene = scene;
     pending.spawnPoints = SPAWN_POINTS;
 
-    var first = makeSoldier(waveDef);
+    var firstType = WaveLogicRef ? WaveLogicRef.pickEnemyType(waveDef, 0) : 'soldier';
+    var first = makeSoldier(waveDef, firstType);
     placeSoldier(first, SPAWN_POINTS, Math.floor(Math.random() * SPAWN_POINTS.length));
     scene.add(first);
     trackMaterials(first);
@@ -277,10 +324,13 @@ var Enemies = (function () {
     pending.remaining = Math.max(0, (waveDef.count || 0) - 1);
     pending.spawnedCount = 1;
 
-    // Objective artillery: 1 per wave from wave 2 onward (extra, on top of the
-    // soldier count — it is a gun crew, not a body to count against the wave).
-    if (index >= 2) {
-      var gun = makeArtillery();
+    // Objective artillery: extra gun crews on top of the soldier count.
+    // Default 1 per wave from wave 2; waveDef.artillery overrides.
+    var gunCount = WaveLogicRef
+      ? WaveLogicRef.artilleryCount(waveDef, index)
+      : (index >= 2 ? 1 : 0);
+    for (var g = 0; g < gunCount; g++) {
+      var gun = makeArtillery(waveDef, g);
       var gx = (Math.random() * 2 - 1) * 20;
       gun.position.set(gx, 0, -36 - Math.random() * 4);
       gun.rotation.y = Math.PI; // barrel toward the fort
@@ -308,11 +358,12 @@ var Enemies = (function () {
     dx /= len;
     dz /= len;
     u.lastHitDir = { x: dx, z: dz };
+    u.lastHitKind = kind;
     u.stagger = Math.max(u.stagger || 0, 0.28);
 
     var body = u.body;
     if (body && u.kind === 'soldier') {
-      var strength = kind === 'cannon' ? 2.0 : (kind === 'sable' ? 2.4 : 0.7);
+      var strength = kind === 'cannon' ? 2.0 : (kind === 'sable' ? 2.4 : (kind === 'shotgun' ? 0.1 : 0.7));
       body.velocity.x += dx * strength;
       body.velocity.z += dz * strength;
     }
@@ -398,13 +449,16 @@ var Enemies = (function () {
     }
     flashEnemy(enemy);
     if (typeof sfx !== 'undefined' && sfx && typeof sfx.enemyShot === 'function') {
-      sfx.enemyShot();
+      sfx.enemyShot(muzzle);
     }
   }
 
   function fireArtillery(enemy, effects) {
+    var rocket = !!(enemy.userData && enemy.userData.rocket);
     enemy.updateMatrixWorld(true);
-    var muzzle = enemy.localToWorld(new THREE.Vector3(0, 0.87, -1.42));
+    var muzzle = enemy.localToWorld(rocket
+      ? new THREE.Vector3(0, 0.98, -0.5)
+      : new THREE.Vector3(0, 0.87, -1.42));
     var tx = ARTILLERY_TARGET.minX + Math.random() * (ARTILLERY_TARGET.maxX - ARTILLERY_TARGET.minX);
     var tz = ARTILLERY_TARGET.minZ + Math.random() * (ARTILLERY_TARGET.maxZ - ARTILLERY_TARGET.minZ);
     var target = { x: tx, y: 0.2, z: tz };
@@ -413,10 +467,10 @@ var Enemies = (function () {
         from: { x: muzzle.x, y: muzzle.y, z: muzzle.z },
         target: target,
         owner: 'enemy',
-        speed: 62,
-        blastRadius: 3.4,
-        blastDamage: 25,
-        fortDamage: ARTILLERY_DAMAGE,
+        speed: rocket ? 54 : 62,
+        blastRadius: rocket ? 2.6 : 3.4,
+        blastDamage: rocket ? 16 : 25,
+        fortDamage: rocket ? 6 : ARTILLERY_DAMAGE,
       });
     }
     var dx = target.x - muzzle.x;
@@ -428,8 +482,8 @@ var Enemies = (function () {
     }
     flashEnemy(enemy);
     if (typeof sfx !== 'undefined' && sfx) {
-      if (typeof sfx.cannon === 'function') sfx.cannon();
-      else if (typeof sfx.enemyShot === 'function') sfx.enemyShot();
+      if (typeof sfx.cannon === 'function') sfx.cannon(muzzle);
+      else if (typeof sfx.enemyShot === 'function') sfx.enemyShot(muzzle);
     }
   }
 
@@ -475,7 +529,7 @@ var Enemies = (function () {
       if (u.kind === 'artillery') {
         u.cooldown -= dt;
         if (u.cooldown <= 0) {
-          u.cooldown = ARTILLERY_INTERVAL;
+          u.cooldown = u.rocket ? 4.5 : ARTILLERY_INTERVAL;
           fireArtillery(enemy, effects);
         }
         continue;
@@ -517,7 +571,7 @@ var Enemies = (function () {
         u.yaw = angleTowards(u.yaw, face, ENEMY_TURN_RATE * dt);
         u.cooldown -= dt;
         if (u.cooldown <= 0) {
-          u.cooldown = MELEE_COOLDOWN;
+          u.cooldown = u.meleeCooldown || MELEE_COOLDOWN;
           if (atPlayer) {
             if (typeof callbacks.onEnemyDamagePlayer === 'function') {
               callbacks.onEnemyDamagePlayer(u.damage || 10);
@@ -533,7 +587,7 @@ var Enemies = (function () {
             }
           }
         }
-      } else if (!wallRush && distPlayer <= SHOOT_RANGE && canSeePlayer) {
+      } else if (!wallRush && u.canShoot !== false && distPlayer <= SHOOT_RANGE && canSeePlayer) {
         u.aiState = 'shoot';
         u.yaw = angleTowards(u.yaw, Math.atan2(dx, dz) + Math.PI, ENEMY_TURN_RATE * dt);
         u.cooldown -= dt;
@@ -545,8 +599,9 @@ var Enemies = (function () {
         u.aiState = 'advance';
         var tx = clamp((u.targetX || 0) + (u.offsetX || 0), -WALL_HALF_SPAN, WALL_HALF_SPAN);
         var dir = steerFn({ x: pos.x, z: pos.z }, { x: tx, z: wallZ });
-        desiredX = dir.x * SPEED;
-        desiredZ = dir.z * SPEED;
+        var speed = u.speed || SPEED;
+        desiredX = dir.x * speed;
+        desiredZ = dir.z * speed;
 
         // Soft separation keeps the line from collapsing into one stack.
         for (var j = 0; j < enemies.length; j++) {
@@ -579,6 +634,7 @@ var Enemies = (function () {
   return {
     bindPhysics: bindPhysics,
     spawnWave: spawnWave,
+    reset: reset,
     updateEnemies: updateEnemies,
     applyHit: applyHit,
     flashEnemy: flashEnemy,

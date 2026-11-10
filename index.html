@@ -17,22 +17,62 @@
         <div class="bar"><div id="hud-health-bar" class="bar-fill bar-health"></div></div>
         <span id="hud-health" class="hud-note">HP 100</span>
       </div>
-      <div class="hud-top-center"><span id="hud-wave">Oleada 1/3</span></div>
+      <div class="hud-top-center"><span id="hud-wave">Oleada 1/5</span></div>
+      <div id="hud-objective" class="hud-objective"></div>
       <div class="hud-corner hud-top-right">
         <div class="hud-label">Fuerte</div>
         <div class="bar"><div id="hud-fort-bar" class="bar-fill bar-fort"></div></div>
         <span id="hud-fort" class="hud-note">Fuerte 100</span>
       </div>
       <div class="hud-bottom-right"><span id="hud-ammo">Mosquete 1 / 1</span></div>
+      <div id="hud-radio" class="hud-radio hidden"></div>
+      <div id="hud-inventory" class="hud-inventory"></div>
+      <div id="pickup-hint" class="hidden"></div>
       <div id="crosshair"><div class="ch-ring"></div><div class="ch-dot"></div></div>
       <div id="hit-marker"></div>
       <div id="cannon-hint" class="hidden">E — Fuego de cañón</div>
+      <div id="kill-popups"></div>
       <div id="damage-vignette"></div>
     </div>
 
     <div id="intro-toast">Humen, 1841 — Los británicos desembarcan. ¡A las murallas!</div>
 
     <div id="pause-overlay"><div class="pause-inner">En pausa<span>Clic para continuar</span></div></div>
+
+    <!-- Intro: cinematic on black with the story chapters -->
+    <div id="intro-screen" class="intro">
+      <div class="intro-bg"></div>
+      <video id="intro-video" class="intro-video" src="assets/cinematic/intro.mp4" playsinline muted loop preload="auto"></video>
+      <audio id="intro-music" src="assets/audio/war_theme.mp3" loop preload="auto"></audio>
+      <div class="intro-shade"></div>
+      <div class="intro-bar intro-bar-top"></div>
+      <div class="intro-bar intro-bar-bottom"></div>
+      <div id="intro-chapters" class="intro-chapters intro-beat">
+        <div id="intro-kicker" class="intro-kicker"></div>
+        <h2 id="intro-title" class="intro-title"></h2>
+        <p id="intro-body" class="intro-body"></p>
+        <div class="intro-actions">
+          <button id="btn-intro-next" class="btn-primary">Continuar ▸</button>
+          <button id="btn-intro-skip" class="intro-skip">Saltar intro</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Intermission between waves: historical clip + card, click to continue -->
+    <div id="intermission-screen" class="intro intermission hidden">
+      <div class="intro-bg"></div>
+      <video id="intermission-video" class="intro-video intermission-video" playsinline muted preload="auto"></video>
+      <div class="intro-shade"></div>
+      <div class="intro-bar intro-bar-top"></div>
+      <div class="intro-bar intro-bar-bottom"></div>
+      <div class="intro-chapters intro-beat intermission-card">
+        <div id="intermission-kicker" class="intro-kicker"></div>
+        <h2 id="intermission-title" class="intro-title intermission-title"></h2>
+        <p id="intermission-body" class="intro-body"></p>
+        <p id="intermission-lesson" class="intermission-lesson"></p>
+        <div id="intermission-hint" class="intermission-hint"></div>
+      </div>
+    </div>
 
     <!-- Main menu -->
     <div id="menu-screen" class="screen">
@@ -42,7 +82,22 @@
         <div class="menu-rule"></div>
         <p class="menu-sub">Primera Guerra del Opio. Lin Zexu ha ordenado destruir el cargamento de opio británico.<br />Como represalia, la flota inglesa regresa para castigar al Imperio.<br />Tú eres un soldado qing en los fuertes. Que no caiga la muralla.</p>
         <button id="btn-play" class="btn-primary">Jugar</button>
+        <div id="campaign-list" class="campaign-list"></div>
+        <div id="menu-best" class="menu-best"></div>
         <div class="menu-credits">Un homenaje a los defensores de Humen · Three.js</div>
+      </div>
+    </div>
+
+    <!-- Armory: pick the weapon before the assault -->
+    <div id="armory-screen" class="screen hidden">
+      <div class="armory-inner" style="width:100%;max-height:100dvh;overflow-y:auto;padding:24px 32px">
+        <div class="menu-kicker">Armería del fuerte de Weiyuan · Anunghoy</div>
+        <h2 class="armory-title">Elige tu arma</h2>
+        <div class="menu-rule"></div>
+        <div id="armory-brief" class="armory-brief"></div>
+        <div id="armory-cards" class="armory-cards"></div>
+        <button id="btn-armory-start" class="btn-primary">Comenzar el asalto</button>
+        <div class="armory-hint">Equipada: <span id="armory-equipped">Mosquete</span> · puedes cambiar de arma durante la batalla con <b>1</b>–<b>5</b></div>
       </div>
     </div>
 
@@ -52,9 +107,11 @@
         <div class="screen-kicker">Victoria</div>
         <h1 class="screen-title screen-title-victory">El fuerte resiste.<br />Humen no cae.</h1>
         <div class="stats-row">
-          <div class="stat"><span id="stat-waves" class="stat-value">3</span><span class="stat-label">Oleadas repelidas</span></div>
+          <div class="stat"><span id="stat-waves" class="stat-value">5</span><span class="stat-label">Oleadas repelidas</span></div>
           <div class="stat"><span id="stat-score" class="stat-value">0</span><span class="stat-label">Puntuación</span></div>
+          <div class="stat"><span id="stat-best" class="stat-value">0</span><span class="stat-label">Mejor puntuación</span></div>
         </div>
+        <div id="new-record" class="new-record hidden">¡Nuevo récord!</div>
         <button id="btn-again" class="btn-primary">Jugar otra vez</button>
       </div>
     </div>
@@ -62,23 +119,48 @@
     <!-- Defeat -->
     <div id="defeat-screen" class="screen hidden">
       <div class="screen-inner">
-        <div class="screen-kicker screen-kicker-defeat">Derrota</div>
-        <h1 class="screen-title screen-title-defeat">Derrota</h1>
+        <div id="defeat-kicker" class="screen-kicker screen-kicker-defeat">Derrota</div>
+        <h1 id="defeat-title" class="screen-title screen-title-defeat">Derrota</h1>
         <p id="defeat-cause" class="screen-cause">Has caído defendiendo la muralla.</p>
+        <section id="epilogue-panel" class="epilogue hidden">
+          <h2 class="epilogue-title">Epílogo histórico</h2>
+          <div id="epilogue-body" class="epilogue-body"></div>
+        </section>
+        <div class="stats-row">
+          <div class="stat"><span id="defeat-score" class="stat-value">0</span><span class="stat-label">Puntuación</span></div>
+          <div class="stat"><span id="defeat-best" class="stat-value">0</span><span class="stat-label">Mejor puntuación</span></div>
+        </div>
         <button id="btn-retry" class="btn-primary btn-primary-defeat">Reintentar</button>
       </div>
     </div>
 
     <script src="vendor/three.min.js"></script>
+    <script src="vendor/gltfloader.min.js"></script>
     <script src="vendor/cannon-es.min.js"></script>
+    <script src="assets/models/cannon.model.js"></script>
+    <script src="assets/models/qing.model.js"></script>
+    <script src="js/assets.js"></script>
     <script src="js/logic/config.js"></script>
+    <script src="js/logic/items.js"></script>
+    <script src="js/logic/ally.js"></script>
+    <script src="js/logic/campaign.js"></script>
+    <script src="js/logic/objectives.js"></script>
+    <script src="js/logic/progress.js"></script>
     <script src="js/logic/state.js"></script>
     <script src="js/logic/combat.js"></script>
     <script src="js/logic/physics.js"></script>
+    <script src="js/logic/waves.js"></script>
+    <script src="js/logic/records.js"></script>
+    <script src="js/logic/spatial.js"></script>
+    <script src="js/logic/armory.js"></script>
+    <script src="js/logic/intro.js"></script>
     <script src="js/hud.js"></script>
     <script src="js/screens.js"></script>
     <script src="js/models.js"></script>
     <script src="js/world.js"></script>
+    <script src="js/pickups.js"></script>
+    <script src="js/allies.js"></script>
+    <script src="js/intermission.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/effects.js"></script>
     <script src="js/physics.js"></script>

@@ -80,18 +80,135 @@ var createPlayer = (function () {
     var lastGrounded = true;
 
     // --- Weapon state ---
-    var clips = { mosquete: WEAPONS.mosquete.clipSize }; // sable has no clip
-    var currentKey = 'mosquete';
+    // Every firearm gets a clip; melee weapons have none.
+    var clips = {};
+    (function () {
+      for (var key in WEAPONS) {
+        if (!Object.prototype.hasOwnProperty.call(WEAPONS, key)) continue;
+        var def = WEAPONS[key];
+        if (def.type !== 'melee') clips[key] = def.clipSize;
+      }
+    })();
+    var currentKey = (typeof ARMORY_ORDER !== 'undefined' && ARMORY_ORDER.length)
+      ? ARMORY_ORDER[0]
+      : 'mosquete';
     var lastShotAt = {}; // per-weapon fire cooldown timestamps
+    var reloadingKey = null; // weapon whose reload is in flight
+
+    // --- Inventory (weapons stay on 1-5; consumables live on 6-8) ---
+    var items = (typeof ItemLogic !== 'undefined' && ItemLogic) ? ItemLogic : null;
+    var inventory = items ? items.createInventory() : { medkit: 0, ammoBag: 0, grenade: 0 };
+    var maxHp = (typeof PLAYER_HP !== 'undefined') ? PLAYER_HP : 100;
+    var lastGrenadeAt = -Infinity;
+    state.inventory = inventory;
+
+    function flashSlot(slot) {
+      if (typeof HUD === 'undefined' || !HUD || typeof HUD.flashSlot !== 'function') return;
+      HUD.flashSlot(slot);
+    }
+
+    function useItemSlot(slot) {
+      if (state.phase !== 'playing') return false;
+      if (!items) return false;
+      if (slot === 6) {
+        if ((inventory.medkit || 0) <= 0 || (state.playerHp || 0) >= maxHp) {
+          flashSlot(6);
+          return false;
+        }
+        items.useItem(inventory, 'medkit');
+        state.playerHp = Math.min(maxHp, (state.playerHp || 0) + items.ITEM_DEFS.medkit.heal);
+        flashSlot(6);
+        return true;
+      }
+      if (slot === 7) {
+        if ((inventory.ammoBag || 0) <= 0 || !items.needsAmmo(clips, WEAPONS)) {
+          flashSlot(7);
+          return false;
+        }
+        items.useItem(inventory, 'ammoBag');
+        items.refillClips(clips, WEAPONS);
+        state.reloadingUntil = 0;
+        reloadingKey = null;
+        syncStateAmmo();
+        flashSlot(7);
+        return true;
+      }
+      if (slot === 8) return throwGrenade();
+      return false;
+    }
+
+    function throwGrenade() {
+      if (state.phase !== 'playing' || !items) return false;
+      if ((inventory.grenade || 0) <= 0) {
+        flashSlot(8);
+        return false;
+      }
+      if ((state.time || 0) - lastGrenadeAt < 0.8) return false;
+      if (!physics || typeof physics.fireCannon !== 'function') return false;
+
+      camera.updateMatrixWorld(true);
+      camera.getWorldDirection(forwardVec);
+      var origin = {
+        x: camera.position.x + forwardVec.x * 0.6,
+        y: camera.position.y + forwardVec.y * 0.6 - 0.05,
+        z: camera.position.z + forwardVec.z * 0.6,
+      };
+      var def = items.ITEM_DEFS.grenade;
+      var target = (typeof physics.aimPoint === 'function')
+        ? physics.aimPoint(origin, forwardVec, def.maxRange)
+        : { x: origin.x + forwardVec.x * 16, y: origin.y + forwardVec.y * 16, z: origin.z + forwardVec.z * 16 };
+      target.y = Math.max(0.25, Math.min(4, target.y || 0.25));
+
+      items.useItem(inventory, 'grenade');
+      lastGrenadeAt = state.time || 0;
+      physics.fireCannon({
+        from: origin,
+        target: target,
+        owner: 'player',
+        damage: def.damage,
+        blastRadius: def.blastRadius,
+        fortDamage: 0,
+        speed: def.speed,
+      });
+      if (effects && typeof effects.addShake === 'function') effects.addShake(0.05);
+      sfxCall('shot');
+      flashSlot(8);
+      return true;
+    }
+
+    function tryPickup() {
+      if (state.phase !== 'playing') return false;
+      if (typeof hooks.onPickupRequest !== 'function') return false;
+      return hooks.onPickupRequest();
+    }
 
     function weaponDef() {
       return WEAPONS[currentKey];
     }
 
+    // Armory pick: works in any phase so the loadout can be set before play.
+    function setLoadout(key) {
+      var next = (typeof sanitizeLoadout === 'function')
+        ? sanitizeLoadout(key, WEAPONS)
+        : (WEAPONS[key] ? key : 'mosquete');
+      if (next === currentKey) return currentKey;
+      currentKey = next;
+      syncViewmodel();
+      syncStateAmmo();
+      return currentKey;
+    }
+
+    function getWeaponKey() {
+      return currentKey;
+    }
+
     // Audio is optional: if js/audio.js failed to load, gameplay must continue.
-    function sfxCall(name) {
+    function sfxCall(name, arg) {
       if (typeof sfx !== 'undefined' && sfx && typeof sfx[name] === 'function') {
-        try { sfx[name](); } catch (e) { /* audio is non-critical */ }
+        try {
+          if (arg === undefined) sfx[name]();
+          else sfx[name](arg);
+        } catch (e) { /* audio is non-critical */ }
       }
     }
 
@@ -159,13 +276,81 @@ var createPlayer = (function () {
     sable.add(hilt);
     viewmodel.add(sable);
 
+    // Flintlock rifle: longer barrel, brass furniture, held lower.
+    var fusil = new THREE.Group();
+    var fusilStock = new THREE.Mesh(
+      new THREE.BoxGeometry(0.085, 0.1, 0.78),
+      new THREE.MeshStandardMaterial({ color: 0x3b2517, roughness: 0.92 })
+    );
+    fusilStock.position.set(0, -0.01, -0.1);
+    fusil.add(fusilStock);
+    var fusilBarrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.019, 0.019, 0.82, 10),
+      new THREE.MeshStandardMaterial({ color: 0x33333a, roughness: 0.42, metalness: 0.78 })
+    );
+    fusilBarrel.rotation.x = Math.PI / 2;
+    fusilBarrel.position.set(0, 0.035, -0.52);
+    fusil.add(fusilBarrel);
+    var fusilLock = new THREE.Mesh(
+      new THREE.BoxGeometry(0.035, 0.075, 0.16),
+      new THREE.MeshStandardMaterial({ color: 0xb08b3a, roughness: 0.35, metalness: 0.85 })
+    );
+    fusilLock.position.set(0, 0.02, -0.02);
+    fusil.add(fusilLock);
+    viewmodel.add(fusil);
+
+    // Pike: long shaft with a leaf blade, held diagonally.
+    var pica = new THREE.Group();
+    var shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.021, 1.2, 8),
+      new THREE.MeshStandardMaterial({ color: 0x5a4128, roughness: 0.9 })
+    );
+    shaft.rotation.x = Math.PI / 2 - 0.1;
+    shaft.position.set(0, -0.02, -0.26);
+    pica.add(shaft);
+    var pikeBlade = new THREE.Mesh(
+      new THREE.ConeGeometry(0.045, 0.34, 6),
+      new THREE.MeshStandardMaterial({ color: 0xc9ced4, roughness: 0.28, metalness: 0.88 })
+    );
+    pikeBlade.rotation.x = -Math.PI / 2 + 0.1;
+    pikeBlade.position.set(0, 0.05, -0.92);
+    pica.add(pikeBlade);
+    viewmodel.add(pica);
+
+    var trabuco = new THREE.Group();
+    var trabucoStock = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 0.1, 0.42),
+      new THREE.MeshStandardMaterial({ color: 0x4a2f1d, roughness: 0.9 })
+    );
+    trabucoStock.position.set(0, -0.01, -0.02);
+    trabuco.add(trabucoStock);
+    var trabucoBarrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.027, 0.027, 0.42, 10),
+      new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.5, metalness: 0.7 })
+    );
+    trabucoBarrel.rotation.x = Math.PI / 2;
+    trabucoBarrel.position.set(0, 0.05, -0.3);
+    trabuco.add(trabucoBarrel);
+    var trabucoMuzzle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.065, 0.027, 0.2, 10),
+      trabucoBarrel.material
+    );
+    trabucoMuzzle.rotation.x = -Math.PI / 2;
+    trabucoMuzzle.position.set(0, 0.05, -0.6);
+    trabuco.add(trabucoMuzzle);
+    viewmodel.add(trabuco);
+
     var VM_BASE = { x: 0.32, y: -0.30, z: -0.55 };
     viewmodel.position.set(VM_BASE.x, VM_BASE.y, VM_BASE.z);
     viewmodel.rotation.y = 0.08;
 
+    var viewmodels = { mosquete: musket, fusil: fusil, sable: sable, pica: pica, trabuco: trabuco };
+
     function syncViewmodel() {
-      musket.visible = currentKey === 'mosquete';
-      sable.visible = currentKey === 'sable';
+      for (var key in viewmodels) {
+        if (!Object.prototype.hasOwnProperty.call(viewmodels, key)) continue;
+        viewmodels[key].visible = key === currentKey;
+      }
     }
 
     // --- Fort cannons (usable with E) ---
@@ -317,6 +502,13 @@ var createPlayer = (function () {
       if (e.code === 'KeyR') reload();
       else if (e.code === 'Digit1' || e.code === 'Numpad1') switchWeapon(1);
       else if (e.code === 'Digit2' || e.code === 'Numpad2') switchWeapon(2);
+      else if (e.code === 'Digit3' || e.code === 'Numpad3') switchWeapon(3);
+      else if (e.code === 'Digit4' || e.code === 'Numpad4') switchWeapon(4);
+      else if (e.code === 'Digit5' || e.code === 'Numpad5') switchWeapon(5);
+      else if (e.code === 'Digit6' || e.code === 'Numpad6') useItemSlot(6);
+      else if (e.code === 'Digit7' || e.code === 'Numpad7') useItemSlot(7);
+      else if (e.code === 'Digit8' || e.code === 'Numpad8') useItemSlot(8);
+      else if (e.code === 'KeyF') tryPickup();
       else if (e.code === 'KeyE') fireCannon();
       else if (e.code === 'Space') {
         jumpQueued = true;
@@ -402,13 +594,24 @@ var createPlayer = (function () {
           .addScaledVector(forwardVec, 0.55)
           .addScaledVector(rightVec, 0.13);
         muzzlePoint.y -= 0.1;
-        physics.fireMusket({
-          from: { x: muzzlePoint.x, y: muzzlePoint.y, z: muzzlePoint.z },
-          dir: { x: forwardVec.x, y: forwardVec.y, z: forwardVec.z },
-          spread: spread,
-          damage: def.damage,
-          owner: 'player',
-        });
+        if (def.pellets > 1) {
+          physics.fireShotgun({
+            from: { x: muzzlePoint.x, y: muzzlePoint.y, z: muzzlePoint.z },
+            dir: { x: forwardVec.x, y: forwardVec.y, z: forwardVec.z },
+            spread: def.spread + spread,
+            damage: def.damage,
+            pellets: def.pellets,
+            owner: 'player',
+          });
+        } else {
+          physics.fireMusket({
+            from: { x: muzzlePoint.x, y: muzzlePoint.y, z: muzzlePoint.z },
+            dir: { x: forwardVec.x, y: forwardVec.y, z: forwardVec.z },
+            spread: spread,
+            damage: def.damage,
+            owner: 'player',
+          });
+        }
         if (effects) {
           effects.muzzleFlash(muzzlePoint, forwardVec);
           effects.addShake(0.05);
@@ -419,7 +622,12 @@ var createPlayer = (function () {
         sfxCall('shot');
       }
 
-      if (def.type !== 'melee' && clips[currentKey] === 0 && startReload(currentKey, state)) sfxCall('reload');
+      if (def.type !== 'melee' && clips[currentKey] === 0) {
+        if (startReload(currentKey, state)) {
+          reloadingKey = currentKey;
+          sfxCall('reload', def.reloadTime);
+        }
+      }
       syncStateAmmo();
       return true;
     }
@@ -427,16 +635,27 @@ var createPlayer = (function () {
     function reload() {
       if (state.phase !== 'playing') return false;
       var started = startReload(currentKey, state);
-      if (started) sfxCall('reload');
+      if (started) {
+        reloadingKey = currentKey;
+        sfxCall('reload', weaponDef().reloadTime);
+      }
       syncStateAmmo();
       return started;
     }
 
+    // 1..5 map to the armory order; names are accepted too.
     function switchWeapon(i) {
       if (state.phase !== 'playing') return currentKey;
       var next = null;
-      if (i === 1 || i === '1' || i === 'mosquete') next = 'mosquete';
-      else if (i === 2 || i === '2' || i === 'sable') next = 'sable';
+      var order = (typeof ARMORY_ORDER !== 'undefined' && ARMORY_ORDER.length)
+        ? ARMORY_ORDER
+        : Object.keys(WEAPONS);
+      if (typeof i === 'number' && i >= 1 && i <= order.length) next = order[i - 1];
+      else if (typeof i === 'string') {
+        var n = parseInt(i, 10);
+        if (!isNaN(n) && n >= 1 && n <= order.length) next = order[n - 1];
+        else if (WEAPONS[i]) next = i;
+      }
       if (!next || next === currentKey || !WEAPONS[next]) return currentKey;
       currentKey = next;
       syncViewmodel();
@@ -455,12 +674,16 @@ var createPlayer = (function () {
       dt = Math.min(Math.max(dt || 0, 0), 0.1);
       if (state.phase === 'playing') state.time = (state.time || 0) + dt;
 
-      // Reload completion.
+      // Reload completion: refills the weapon that was actually reloading,
+      // which may not be the one in hand if the player swapped mid-reload.
       if (isReloading() === false && state.reloadingUntil && state.reloadingUntil > 0 && (state.time || 0) >= state.reloadingUntil) {
-        if (WEAPONS.mosquete.reloadTime && clips.mosquete < WEAPONS.mosquete.clipSize) {
-          clips.mosquete = WEAPONS.mosquete.clipSize;
+        var doneKey = reloadingKey || currentKey;
+        var doneDef = WEAPONS[doneKey];
+        if (doneDef && doneDef.reloadTime && clips[doneKey] < doneDef.clipSize) {
+          clips[doneKey] = doneDef.clipSize;
         }
         state.reloadingUntil = 0;
+        reloadingKey = null;
         syncStateAmmo();
       }
 
@@ -530,15 +753,19 @@ var createPlayer = (function () {
 
       updateCannonChoice(dt);
 
-      // Viewmodel bob + recoil + sable swing.
+      // Viewmodel bob + recoil + sable swing + reload dip.
       var bobY = Math.sin(bobPhase * 2) * 0.014 * bobBlend;
       var bobX = Math.cos(bobPhase) * 0.010 * bobBlend;
+      var reloadDef = WEAPONS[currentKey];
+      var reloadDip = isReloading() && reloadDef
+        ? Math.sin(reloadProgress(state.reloadingUntil, state.time, reloadDef.reloadTime) * Math.PI)
+        : 0;
       viewmodel.position.set(
         VM_BASE.x + bobX,
-        VM_BASE.y + bobY,
+        VM_BASE.y + bobY - reloadDip * 0.14,
         VM_BASE.z + recoil * 0.18
       );
-      viewmodel.rotation.x = recoil * 0.22;
+      viewmodel.rotation.x = recoil * 0.22 + reloadDip * 0.25;
       viewmodel.rotation.z = meleeSwing > 0
         ? Math.sin((0.32 - meleeSwing) / 0.32 * Math.PI) * 0.5
         : 0;
@@ -582,6 +809,13 @@ var createPlayer = (function () {
       shoot: shoot,
       reload: reload,
       switchWeapon: switchWeapon,
+      setLoadout: setLoadout,
+      getWeaponKey: getWeaponKey,
+      useItemSlot: useItemSlot,
+      throwGrenade: throwGrenade,
+      tryPickup: tryPickup,
+      getInventory: function () { return inventory; },
+      inventory: inventory,
       fireCannon: fireCannon,
       addShake: addShake,
       state: state,

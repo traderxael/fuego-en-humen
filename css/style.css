@@ -210,7 +210,7 @@ body {
 #cannon-hint {
   position: absolute;
   left: 50%;
-  bottom: 26px;
+  bottom: 84px;
   transform: translateX(-50%);
   background: var(--panel);
   border: 1px solid rgba(201, 162, 39, 0.5);
@@ -223,6 +223,236 @@ body {
   white-space: nowrap;
   text-shadow: 0 1px 2px #000;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+/* Campaign mission select (main menu) */
+.campaign-list {
+  margin: 18px auto 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(96px, 1fr));
+  gap: 8px;
+  max-width: 860px;
+}
+
+.campaign-mission {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(201, 162, 39, 0.25);
+  color: var(--bone);
+  font-family: Georgia, 'Times New Roman', serif;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.campaign-mission:hover:not(:disabled) { border-color: var(--ochre); }
+.campaign-mission-on { border-color: var(--ochre); background: rgba(201, 162, 39, 0.18); }
+.campaign-mission-locked { opacity: 0.35; cursor: not-allowed; }
+.campaign-mission-title { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+.campaign-mission-date { font-size: 10px; opacity: 0.75; }
+
+/* Mission briefing inside the armory */
+.armory-brief {
+  max-width: 760px;
+  margin: 0 auto 18px;
+  padding: 14px 18px;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.32);
+  border-left: 3px solid var(--ochre);
+}
+
+.brief-kicker {
+  font-size: 11px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--ochre);
+}
+
+.brief-title {
+  font-family: Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
+  font-size: 26px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--bone);
+  margin: 4px 0 8px;
+}
+
+.brief-body {
+  margin: 0;
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.55;
+  color: var(--bone-dim);
+}
+
+.brief-objectives {
+  margin: 10px 0 0 18px;
+  padding: 0;
+  color: var(--bone);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Mission objective under the wave counter */
+.hud-objective {
+  position: absolute;
+  top: 66px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  border-left: 3px solid var(--ochre);
+  padding: 7px 18px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--bone);
+  white-space: nowrap;
+  text-shadow: 0 1px 2px #000;
+}
+
+/* Squad radio chatter, above the hotbar */
+.hud-radio {
+  position: absolute;
+  left: 50%;
+  bottom: 158px;
+  transform: translateX(-50%);
+  max-width: 720px;
+  background: rgba(0, 0, 0, 0.62);
+  border-left: 3px solid var(--red);
+  padding: 9px 20px;
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--bone);
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+  animation: radio-in 0.25s ease-out;
+}
+
+@keyframes radio-in {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Inventory hotbar: weapons on 1-5 and consumables on 6-8 */
+.hud-inventory {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-bottom: 3px solid var(--ochre);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+}
+
+.inv-slot {
+  position: relative;
+  width: 54px;
+  height: 46px;
+  padding: 4px 4px 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 1px solid rgba(201, 162, 39, 0.22);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--bone);
+  text-shadow: 0 1px 2px #000;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.inv-slot-item { border-style: dashed; }
+
+.inv-slot-on {
+  border-color: var(--ochre);
+  background: rgba(201, 162, 39, 0.18);
+  box-shadow: inset 0 0 10px rgba(201, 162, 39, 0.25);
+}
+
+.inv-slot-empty { opacity: 0.4; }
+
+.inv-slot-pulse { background: rgba(201, 162, 39, 0.55); }
+
+.inv-key {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.inv-name {
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.inv-count {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ochre);
+}
+
+.inv-slot-weapon .inv-count { display: none; }
+
+/* Contextual pickup prompt above the hotbar */
+#pickup-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 124px;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid rgba(201, 162, 39, 0.5);
+  border-bottom: 3px solid var(--ochre);
+  padding: 7px 18px 6px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--bone);
+  white-space: nowrap;
+  text-shadow: 0 1px 2px #000;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+/* Kill score popups: pooled divs floating up from below the crosshair */
+#kill-popups {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.kill-popup {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  font-family: Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
+  font-size: 22px;
+  letter-spacing: 2px;
+  color: var(--ochre);
+  text-shadow: 0 1px 3px #000;
+  opacity: 0;
+}
+
+.kill-popup.kill-float {
+  animation: kill-float 0.9s ease-out forwards;
+}
+
+@keyframes kill-float {
+  0%   { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-34px); }
 }
 
 /* Damage vignette */
@@ -247,7 +477,7 @@ body {
 
 #intro-toast {
   position: fixed;
-  top: 84px;
+  top: 118px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
@@ -403,6 +633,36 @@ body {
   margin: 18px 0 34px;
 }
 
+/* Historical epilogue on the scripted defeat */
+.epilogue {
+  max-width: 700px;
+  margin: 0 auto 30px;
+  padding: 20px 26px;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.35);
+  border-left: 3px solid var(--ochre);
+}
+
+.epilogue-title {
+  margin: 0 0 12px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--ochre);
+}
+
+.epilogue-body p {
+  margin: 0 0 12px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--bone-dim);
+}
+
+.epilogue-body p:last-child {
+  margin-bottom: 0;
+}
+
 /* Stats row (victory) */
 .stats-row {
   display: flex;
@@ -476,4 +736,352 @@ body {
   font-size: 11px;
   letter-spacing: 1px;
   color: #7a7263;
+}
+
+.menu-best {
+  margin-top: 22px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--ochre);
+}
+
+.menu-best:empty {
+  display: none;
+}
+
+.new-record {
+  display: inline-block;
+  margin: -14px 0 26px;
+  padding: 7px 22px 6px;
+  font-family: Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
+  font-size: 17px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--ochre);
+  border: 1px solid var(--bone);
+  box-shadow: 0 0 34px rgba(201, 162, 39, 0.45);
+}
+
+/* ============ Armory ============ */
+
+.armory-inner {
+  text-align: center;
+  max-width: 1040px;
+  padding: 0 32px;
+}
+
+.armory-title {
+  font-family: Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
+  font-weight: 400;
+  font-size: clamp(34px, 5.4vw, 62px);
+  letter-spacing: 5px;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--bone);
+  text-shadow: 0 3px 0 #2a1f14, 0 6px 24px rgba(0, 0, 0, 0.9);
+}
+
+.armory-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 18px;
+  margin: 30px 0 34px;
+}
+
+.armory-card {
+  pointer-events: auto;
+  cursor: pointer;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid rgba(201, 162, 39, 0.3);
+  border-top: 3px solid rgba(201, 162, 39, 0.45);
+  padding: 18px 18px 16px;
+  transition: border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.armory-card:hover {
+  border-color: rgba(201, 162, 39, 0.7);
+  transform: translateY(-3px);
+}
+
+.armory-card-on {
+  border-color: var(--ochre);
+  border-top-color: var(--ochre);
+  box-shadow: 0 0 26px rgba(201, 162, 39, 0.28);
+  background: rgba(40, 30, 14, 0.86);
+}
+
+.armory-card-name {
+  font-family: Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
+  font-size: 24px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--bone);
+}
+
+.armory-card-on .armory-card-name {
+  color: var(--ochre);
+}
+
+.armory-card-stats {
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--ochre-dim);
+}
+
+.armory-card-desc {
+  margin: 12px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--bone-dim);
+}
+
+.armory-hint {
+  margin-top: 22px;
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  color: #7a7263;
+}
+
+.armory-hint b {
+  color: var(--ochre);
+}
+
+#armory-equipped {
+  color: var(--bone);
+  letter-spacing: 2px;
+}
+
+/* ============ Intro (black screen + cinematic) ============ */
+
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  background: #000;
+  font-family: Georgia, 'Times New Roman', serif;
+  color: var(--bone);
+}
+
+.intro-bg {
+  position: absolute;
+  inset: 0;
+  background-image: url('../assets/ai/intro-backdrop.jpg');
+  background-size: cover;
+  background-position: center 40%;
+  opacity: 0.34;
+  filter: saturate(0.85);
+}
+
+.intro-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.9;
+}
+
+.intro-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.12) 32%, rgba(0, 0, 0, 0.35) 58%, rgba(0, 0, 0, 0.95) 100%);
+}
+
+.intro-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 9vh;
+  background: #000;
+  z-index: 3;
+}
+
+.intro-bar-top { top: 0; }
+.intro-bar-bottom { bottom: 0; }
+
+.intro-chapters {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 13vh;
+  z-index: 4;
+  padding: 0 6vw;
+  text-align: center;
+}
+
+.intro-kicker {
+  font-size: 12px;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: var(--ochre);
+  margin-bottom: 14px;
+}
+
+.intro-title {
+  font-family: Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
+  font-weight: 400;
+  font-size: clamp(30px, 5vw, 58px);
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  margin: 0 0 16px;
+  color: var(--bone);
+  text-shadow: 0 3px 10px #000, 0 0 60px rgba(201, 162, 39, 0.25);
+}
+
+.intro-body {
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: 16.5px;
+  line-height: 1.7;
+  font-style: italic;
+  color: #d6cdb8;
+  text-shadow: 0 2px 6px #000;
+}
+
+.intro-actions {
+  margin-top: 26px;
+  display: flex;  gap: 18px;
+  align-items: center;
+  justify-content: center;
+}
+
+.intro-skip {
+  pointer-events: auto;
+  background: transparent;
+  border: 1px solid rgba(232, 224, 207, 0.35);
+  color: var(--bone-dim);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 12px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  padding: 11px 20px;
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.intro-skip:hover,
+.intro-skip:focus-visible {
+  color: var(--bone);
+  border-color: var(--ochre);
+  outline: none;
+}
+
+.intro-beat {
+  animation: intro-beat-in 0.75s ease both;
+}
+
+@keyframes intro-beat-in {
+  0%   { opacity: 0; transform: translateY(14px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Aged paper texture (AI-generated) over the armory and intro screens. */
+#armory-screen::before,
+.intro::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('../assets/ai/parchment.jpg');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.1;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+/* Above the video and shade (z-index auto), below the letterbox bars (3)
+   and the chapters (4). */
+.intro::after {
+  z-index: 2;
+}
+
+/* ============ Wave intermission (historical clip) ============ */
+
+.intermission {
+  z-index: 30;
+  cursor: pointer;
+}
+
+.intermission-video {
+  opacity: 0.82;
+  filter: brightness(1.28) saturate(1.08);
+}
+
+.intermission-card {
+  bottom: 16vh;
+  text-align: center;
+  z-index: 4;
+}
+
+.intermission-title {
+  font-size: clamp(34px, 6vw, 68px);
+  letter-spacing: 6px;
+  margin-bottom: 12px;
+}
+
+.intermission-lesson {
+  max-width: 640px;
+  margin: 18px auto 0;
+  font-size: 14px;
+  line-height: 1.6;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ochre);
+  text-shadow: 0 2px 6px #000;
+}
+
+.intermission-hint {
+  margin-top: 26px;
+  min-height: 18px;
+  font-size: 13px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--bone);
+  opacity: 0.85;
+  text-shadow: 0 2px 6px #000;
+  animation: intermission-hint-pulse 1.8s ease-in-out infinite;
+}
+
+.intermission-hint:empty {
+  animation: none;
+}
+
+.intermission.fallback .intermission-video {
+  display: none;
+}
+
+@keyframes intermission-hint-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+#armory-screen::before {
+  z-index: 1;
+}
+
+#armory-screen > .armory-inner {
+  position: relative;
+  z-index: 2;
+}
+
+.armory-card-icon {
+  color: var(--ochre);
+  margin-bottom: 10px;
+  opacity: 0.85;
+}
+
+.armory-card-on .armory-card-icon {
+  opacity: 1;
+}
+
+.armory-icon {
+  width: 46px;
+  height: 46px;
+  display: block;
 }

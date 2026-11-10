@@ -124,3 +124,16 @@ test('dead enemies are ignored by applyHit and a cleared wave has no pending spa
   assert.strictEqual(Enemies.pendingSpawns(), 0);
   assert.strictEqual(enemies.length, 1);
 });
+
+test('applyHit recuerda el tipo de atacante para que las bajas aliadas no sumen', () => {
+  const { physics } = fakePhysics();
+  Enemies.bindPhysics(physics);
+  const scene = new THREE.Scene();
+  const enemies = [];
+  Enemies.spawnWave(scene, { count: 1, interval: 1, hp: 200, damage: 10 }, enemies, 1);
+  const enemy = enemies[0];
+  assert.strictEqual(Enemies.applyHit(enemy, 20, { x: 0, z: 1 }, null, 'ally'), true);
+  assert.strictEqual(enemy.userData.lastHitKind, 'ally');
+  Enemies.applyHit(enemy, 20, { x: 0, z: 1 }, null, 'musket');
+  assert.strictEqual(enemy.userData.lastHitKind, 'musket');
+});

@@ -39,4 +39,22 @@ function steerTowards(from, to) {
   return { x: dx / len, z: dz / len };
 }
 
-if (typeof module !== 'undefined') module.exports = { startReload, applyWaveDamage, applyPlayerDamage, steerTowards };
+// Low-HP heartbeat cadence: null when safe/dead, 1.1s at 30 HP down to
+// 0.55s at 1 HP. The caller owns the clock so pause freezes the beat.
+function heartbeatInterval(hp) {
+  if (!Number.isFinite(hp) || hp > 30 || hp <= 0) return null;
+  var t = (30 - hp) / 29;
+  return 1.1 - t * 0.55;
+}
+
+// Reload animation progress 0..1 (0 at start, 1 at the deadline). Returns 0
+// when not reloading or for weapons without a valid reloadTime. The caller
+// shapes the viewmodel dip from this; pause freezes state.time so it holds.
+function reloadProgress(reloadingUntil, now, reloadTime) {
+  if (!Number.isFinite(reloadTime) || reloadTime <= 0) return 0;
+  if (!(reloadingUntil > 0)) return 0;
+  var remaining = reloadingUntil - now;
+  return Math.max(0, Math.min(1, 1 - remaining / reloadTime));
+}
+
+if (typeof module !== 'undefined') module.exports = { startReload, applyWaveDamage, applyPlayerDamage, steerTowards, heartbeatInterval, reloadProgress };

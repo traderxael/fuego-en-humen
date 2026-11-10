@@ -7,8 +7,9 @@ var logicConfig = (typeof module !== 'undefined' && module.exports)
 
 var LEGAL_TRANSITIONS = {
   menu: ['playing'],
-  playing: ['paused', 'victory', 'defeat'],
+  playing: ['paused', 'intermission', 'victory', 'defeat'],
   paused: ['playing'],
+  intermission: ['playing', 'defeat'],
   victory: [],
   defeat: [],
 };

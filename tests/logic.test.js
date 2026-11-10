@@ -1,13 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { WEAPONS, WAVES, PLAYER_HP, FORT_INTEGRITY } = require('../js/logic/config');
+const { WEAPONS, WAVES, ENEMY_TYPES, PLAYER_HP, FORT_INTEGRITY } = require('../js/logic/config');
+const { resolveEnemyStats } = require('../js/logic/waves');
 const { createGameState, setPhase, nextWave } = require('../js/logic/state');
 const {
   startReload,
   applyWaveDamage,
   applyPlayerDamage,
   steerTowards,
+  heartbeatInterval,
+  reloadProgress,
 } = require('../js/logic/combat');
 
 test('createGameState starts in menu with wave 1 and full HP/integrity', () => {
@@ -41,6 +44,20 @@ test('setPhase enforces legal transitions only', () => {
   fromPaused.phase = 'paused';
   assert.strictEqual(setPhase(fromPaused, 'defeat'), false);
   assert.strictEqual(fromPaused.phase, 'paused');
+});
+
+test('la intermisión es una fase legal entre oleadas y no se pausa', () => {
+  const state = createGameState();
+  setPhase(state, 'playing');
+  assert.strictEqual(setPhase(state, 'intermission'), true);
+  assert.strictEqual(state.phase, 'intermission');
+  assert.strictEqual(setPhase(state, 'playing'), true);
+
+  const mid = createGameState();
+  setPhase(mid, 'playing');
+  setPhase(mid, 'intermission');
+  assert.strictEqual(setPhase(mid, 'paused'), false, 'la intermisión no se pausa');
+  assert.strictEqual(setPhase(mid, 'defeat'), true, 'el final histórico llega desde la intermisión');
 });
 
 test('startReload twice in the same tick does not double reloadingUntil', () => {
@@ -82,10 +99,10 @@ test('applyPlayerDamage clamps playerHp at 0 and sets defeat phase', () => {
   assert.strictEqual(state.phase, 'defeat');
 });
 
-test('nextWave after clearing wave 3 sets phase to victory', () => {
+test('nextWave after clearing the last wave sets phase to victory', () => {
   const state = createGameState();
   state.phase = 'playing';
-  state.wave = 3;
+  state.wave = WAVES.length;
   nextWave(state);
   assert.strictEqual(state.phase, 'victory');
 });
@@ -99,9 +116,11 @@ test('nextWave advances to the next wave while waves remain', () => {
   assert.strictEqual(state.phase, 'playing');
 });
 
-test('WAVES has exactly 3 entries with escalating counts', () => {
-  assert.strictEqual(WAVES.length, 3);
-  assert.deepStrictEqual(WAVES.map((w) => w.count), [6, 9, 12]);
+test('WAVES counts escalate across all entries', () => {
+  assert.ok(WAVES.length >= 3);
+  for (let i = 1; i < WAVES.length; i++) {
+    assert.ok(WAVES[i].count > WAVES[i - 1].count);
+  }
 });
 
 test('WEAPONS defines mosquete and sable with combat stats', () => {
@@ -109,6 +128,34 @@ test('WEAPONS defines mosquete and sable with combat stats', () => {
   assert.ok(WEAPONS.sable);
   assert.strictEqual(WEAPONS.mosquete.damage, 80);
   assert.strictEqual(WEAPONS.sable.damage, 60);
+  assert.ok(WEAPONS.trabuco);
+  assert.strictEqual(WEAPONS.trabuco.spread, 0.07);
+  assert.strictEqual(WEAPONS.trabuco.fireCooldown, 1.15);
+});
+
+test('el trabuco mata al enemigo más duro con seis de sus ocho perdigones', () => {
+  const toughestHp = Math.max(...WAVES.flatMap((wave) =>
+    Object.keys(ENEMY_TYPES).map((type) => resolveEnemyStats(wave, type).hp)));
+  const trabuco = WEAPONS.trabuco;
+  assert.strictEqual(trabuco.pellets, 8);
+  assert.ok(trabuco.damage * 6 >= toughestHp,
+    `seis perdigones hacen ${trabuco.damage * 6} y el enemigo más duro tiene ${toughestHp} HP`);
+});
+
+test('heartbeatInterval is silent above 30 HP and at death', () => {
+  assert.strictEqual(heartbeatInterval(100), null);
+  assert.strictEqual(heartbeatInterval(31), null);
+  assert.strictEqual(heartbeatInterval(0), null);
+  assert.strictEqual(heartbeatInterval(-3), null);
+});
+
+test('heartbeatInterval speeds up as HP falls from 30 to 1', () => {
+  const at30 = heartbeatInterval(30);
+  const at15 = heartbeatInterval(15);
+  const at1 = heartbeatInterval(1);
+  assert.ok(Math.abs(at30 - 1.1) < 1e-9);
+  assert.ok(Math.abs(at1 - 0.55) < 1e-9);
+  assert.ok(at15 < at30 && at1 < at15);
 });
 
 test('steerTowards returns a finite unit vector, NaN-safe for zero distance', () => {
@@ -119,4 +166,25 @@ test('steerTowards returns a finite unit vector, NaN-safe for zero distance', ()
   assert.ok(Number.isFinite(unit.x));
   assert.ok(Number.isFinite(unit.z));
   assert.ok(Math.abs(Math.hypot(unit.x, unit.z) - 1) < 1e-9);
+});
+
+test('reloadProgress is 0 when not reloading or reloadTime invalid', () => {
+  assert.strictEqual(reloadProgress(0, 5, 2.6), 0);
+  assert.strictEqual(reloadProgress(0, 0, 2.6), 0);
+  assert.strictEqual(reloadProgress(10, 5, 0), 0);
+  assert.strictEqual(reloadProgress(10, 5, -1), 0);
+  assert.strictEqual(reloadProgress(10, 5, NaN), 0);
+});
+
+test('reloadProgress runs 0 -> 1 across the reload window', () => {
+  const reloadTime = 2.6;
+  const start = 10;
+  const until = start + reloadTime;
+  assert.ok(Math.abs(reloadProgress(until, start, reloadTime) - 0) < 1e-9);
+  assert.ok(Math.abs(reloadProgress(until, start + reloadTime / 2, reloadTime) - 0.5) < 1e-9);
+  assert.ok(Math.abs(reloadProgress(until, until, reloadTime) - 1) < 1e-9);
+});
+
+test('reloadProgress clamps past the deadline to 1', () => {
+  assert.strictEqual(reloadProgress(10, 12, 2.6), 1);
 });

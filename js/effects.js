@@ -365,6 +365,32 @@ var Effects = (function () {
       }
     }
 
+    // Slow, faint smoke rising from a damaged-fort scorch. Cheap: 1-2 soft
+    // particles so the whole fort smoulders without draining the shared pool.
+    function smoke(point) {
+      if (!point) return;
+      var n = 1 + (Math.random() < 0.5 ? 1 : 0);
+      for (var i = 0; i < n; i++) {
+        puff(
+          point.x + (Math.random() - 0.5) * 0.3,
+          point.y + Math.random() * 0.2,
+          point.z + (Math.random() - 0.5) * 0.3,
+          (Math.random() - 0.5) * 0.25,
+          0.5 + Math.random() * 0.35,
+          (Math.random() - 0.5) * 0.25,
+          {
+            life: 2.2 + Math.random() * 0.8,
+            scale: 0.4 + Math.random() * 0.25,
+            grow: 0.7,
+            gravity: -0.05,
+            drag: 0.4,
+            color: 0x555049,
+            opacity: 0.22,
+          }
+        );
+      }
+    }
+
     // --- Projectile trails ---
     function trail(from, kind) {
       var positions = new Float32Array(6);
@@ -465,6 +491,7 @@ var Effects = (function () {
       muzzleFlash: muzzleFlash,
       impact: impact,
       explosion: explosion,
+      smoke: smoke,
       trail: trail,
       cannonball: cannonball,
       removeCannonball: removeCannonball,
