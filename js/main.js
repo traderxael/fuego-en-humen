@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const canvas = document.getElementById('game-canvas');
 
   const state = createGameState();
@@ -70,9 +70,268 @@
     onEnemyHit: handleEnemyHit,
   });
 
-  // Wave 1 is on the beach from the start (phase stays 'menu' until the user
-  // clicks into pointer lock, at which point the game begins).
-  Enemies.spawnWave(scene, WAVES[0], enemies, 1);
+  // --- Mission flow ------------------------------------------------------
+  const MISSION = (typeof CAMPAIGN !== 'undefined' && CAMPAIGN.mission) ? CAMPAIGN.mission : null;
+  const SCORE_CFG = (typeof SCORE !== 'undefined') ? SCORE : {
+    rifleman: 100, marine: 175, officer: 400, artillery: 250,
+    streakWindow: 6, streakStep: 0.25, streakMax: 3, signalKey: 'KeyG',
+  };
+
+  let missionStarted = false;
+  let streak = 1;
+  let streakTimer = 0;
+  let signalsUsed = {};
+  let beatIndex = 0;
+  let pendingBeats = [];
+
+  function setWorldVisible(v) {
+    if (world.group) world.group.visible = v;
+    for (var i = 0; i < enemies.length; i++) {
+      if (enemies[i]) enemies[i].visible = v;
+    }
+    if (player.viewmodel) player.viewmodel.visible = v;
+  }
+
+  function exitPointerLockSafe() {
+    try {
+      if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+    } catch (e) { /* headless / unsupported */ }
+  }
+  function hidePauseOverlay() {
+    const overlay = document.getElementById('pause-overlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+  function requestPointerLock() {
+    try {
+      const p = canvas.requestPointerLock();
+      if (p && typeof p.catch === 'function') p.catch(function () { /* headless / cooldown */ });
+    } catch (e) { /* pointer lock unavailable (e.g. headless) */ }
+  }
+
+  // --- Historical beats and radio ---------------------------------------
+  const firedBeats = {};
+  function triggerBeat(id) {
+    if (!MISSION || !MISSION.beats) return;
+    if (firedBeats[id]) return;
+    firedBeats[id] = true;
+    for (var i = 0; i < MISSION.beats.length; i++) {
+      var beat = MISSION.beats[i];
+      if (beat.id !== id) continue;
+      HUD.showBeat(beat, 11);
+      var radio = radioFor(id);
+      if (radio) HUD.showRadio(radio.speaker, radio.text, 7);
+      return;
+    }
+  }
+
+  function radioFor(id) {
+    if (!MISSION || !MISSION.radio) return null;
+    for (var i = 0; i < MISSION.radio.length; i++) {
+      if (MISSION.radio[i].id === id) return MISSION.radio[i];
+    }
+    return null;
+  }
+
+  function playRadio(id) {
+    var radio = radioFor(id);
+    if (radio) HUD.showRadio(radio.speaker, radio.text, 7);
+  }
+
+  // --- Scoring -----------------------------------------------------------
+  function addScore(points, label) {
+    var base = points || 100;
+    var gained = Math.round(base * streak);
+    state.score = (state.score || 0) + gained;
+    return gained;
+  }
+
+  function bumpStreak() {
+    streak = Math.min(SCORE_CFG.streakMax || 3, streak + (SCORE_CFG.streakStep || 0.25));
+    streakTimer = SCORE_CFG.streakWindow || 6;
+    HUD.setStreak(streak);
+  }
+
+  function decayStreak(dt) {
+    if (streakTimer > 0) {
+      streakTimer -= dt;
+      if (streakTimer <= 0 && streak > 1) {
+        streak = 1;
+        HUD.setStreak(streak);
+      }
+    }
+  }
+
+  // --- Signals (call for support) ---------------------------------------
+  function availableSignal() {
+    if (!MISSION || !MISSION.signals) return null;
+    var best = null;
+    for (var i = 0; i < MISSION.signals.length; i++) {
+      var sig = MISSION.signals[i];
+      if (signalsUsed[sig.id]) continue;
+      if ((state.score || 0) >= sig.cost && !best) best = sig;
+    }
+    return best;
+  }
+
+  function refreshSignalPrompt() {
+    var sig = availableSignal();
+    if (!sig) {
+      HUD.showSignal(null);
+      return;
+    }
+    HUD.showSignal(
+      '<b>' + (SCORE_CFG.signalKey === 'KeyG' ? 'G' : SCORE_CFG.signalKey) + '</b> — ' +
+      sig.label + ' <span style="opacity:.7">(' + sig.cost + ' pts)</span>'
+    );
+  }
+
+  function useSignal() {
+    var sig = availableSignal();
+    if (!sig || state.phase !== 'playing') return false;
+    signalsUsed[sig.id] = true;
+    state.score = Math.max(0, (state.score || 0) - sig.cost);
+    HUD.showRadio('Cuartel general', sig.text, 7);
+    sfxCall('unlock');
+    if (sig.id === 'reparar') {
+      state.fortIntegrity = Math.min(100, state.fortIntegrity + 25);
+    } else if (sig.id === 'municion') {
+      if (player.refillAmmo) player.refillAmmo();
+    } else if (sig.id === 'fuego') {
+      // A reserve gun: a shell lands in the courtyard.
+      if (effects) {
+        effects.explosion({ x: 0, y: 1, z: 12 });
+        effects.addShake(0.4);
+      }
+      sfxCall('explosion');
+    }
+    refreshSignalPrompt();
+    return true;
+  }
+
+  // --- Cinematics --------------------------------------------------------
+  function setViewmodelVisible(v) {
+    if (player && player.viewmodel) player.viewmodel.visible = v;
+  }
+
+  function playCinematic(id, opts) {
+    opts = opts || {};
+    setWorldVisible(false);
+    setViewmodelVisible(false);
+    HUD.hide();
+    hidePauseOverlay();
+    exitPointerLockSafe();
+    var ok = Cinematics.start(id, {
+      scene: scene,
+      camera: camera,
+      effects: effects,
+      waitForInput: !!opts.waitForInput,
+      continueText: opts.continueText,
+      onEnd: function () {
+        setWorldVisible(true);
+        setViewmodelVisible(true);
+        if (opts.onEnd) opts.onEnd();
+      },
+    });
+    if (!ok) {
+      setWorldVisible(true);
+      setViewmodelVisible(true);
+      if (opts.onEnd) opts.onEnd();
+    }
+    return ok;
+  }
+
+  function beginMission() {
+    missionStarted = true;
+    HUD.show();
+    setPhase(state, 'playing');
+    requestPointerLock();
+    if (!enemies.length) Enemies.spawnWave(scene, WAVES[0], enemies, 1);
+    triggerBeat('landing');
+    playRadio('start');
+    refreshSignalPrompt();
+  }
+
+  // Wave horn: exactly once per wave.
+  let hornWave = 0;
+  function playWaveHorn() {
+    if (state.wave === hornWave) return;
+    hornWave = state.wave;
+    sfxCall('waveHorn');
+  }
+
+  const btnPlay = document.getElementById('btn-play');
+  if (btnPlay) {
+    btnPlay.addEventListener('click', function () {
+      sfxCall('unlock'); // AudioContext must be created/resumed inside this gesture
+      sfxCall('ambientSea');
+      sfxCall('music'); // "Al otro lado del río" — assets/audio/al_otro_lado_del_rio.mp3
+      Screens.hideMenu();
+      hidePauseOverlay();
+      if (MISSION) Screens.showBriefing(MISSION);
+      else beginMission();
+    });
+  }
+
+  const btnDeploy = document.getElementById('btn-deploy');
+  if (btnDeploy) {
+    btnDeploy.addEventListener('click', function () {
+      sfxCall('unlock');
+      Screens.hideBriefing();
+      // The historical prologue, then the wall.
+      playCinematic('humen-1839', {
+        waitForInput: true,
+        continueText: 'Pulsa para tomar la muralla',
+        onEnd: function () {
+          beginMission();
+        },
+      });
+    });
+  }
+
+  const btnBack = document.getElementById('btn-back');
+  if (btnBack) {
+    btnBack.addEventListener('click', function () {
+      Screens.hideBriefing();
+      Screens.showMenu();
+    });
+  }
+
+  const btnMusic = document.getElementById('btn-music');
+  function syncMusicButton() {
+    if (!btnMusic) return;
+    var muted = false;
+    try { if (typeof sfx !== 'undefined' && sfx && typeof sfx.isMuted === 'function') muted = sfx.isMuted(); } catch (e) {}
+    btnMusic.textContent = muted ? '♪ Música: Silenciada (M)' : '♪ Música: Al otro lado del río (M)';
+    btnMusic.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    btnMusic.style.opacity = muted ? '0.65' : '1';
+  }
+  if (btnMusic) {
+    btnMusic.addEventListener('click', function (ev) {
+      if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+      sfxCall('unlock');
+      sfxCall('toggleMusic');
+      syncMusicButton();
+    });
+  }
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'KeyM') { sfxCall('unlock'); sfxCall('toggleMusic'); syncMusicButton(); }
+    if (e.code === (SCORE_CFG.signalKey || 'KeyG') && state.phase === 'playing') {
+      if (useSignal()) e.preventDefault();
+    }
+  });
+  try { state.missionTitle = 'Humen, 1841'; } catch (e) {}
+  syncMusicButton();
+
+  // A click or a key confirms the end of a cinematic.
+  function confirmCinematic() {
+    if (!Cinematics.isActive()) return;
+    if (Cinematics.confirm()) {
+      setWorldVisible(true);
+      setViewmodelVisible(true);
+    }
+  }
+  window.addEventListener('keydown', confirmCinematic);
+  window.addEventListener('mousedown', confirmCinematic);
 
   // The static GLB replaces the primitive soldier as soon as it decodes; when
   // the page is opened from file:// the fetch fails and the primitives stay.
@@ -83,6 +342,7 @@
   // Both damage-to-fort channels end in this one path.
   const fortDamaged = function (dmg) {
     applyWaveDamage(state, dmg);
+    if (state.fortIntegrity <= 50 && state.fortIntegrity > 0) playRadio('lowFort');
   };
   const playerDamaged = function (dmg) {
     applyPlayerDamage(state, dmg);
@@ -102,14 +362,23 @@
       fortDamaged(dmg);
     },
     onEnemyKilled: function (enemy) {
-      state.score = (state.score || 0) + 100;
-      if (enemy && enemy.userData && enemy.userData.kind === 'artillery') {
+      const u = (enemy && enemy.userData) || {};
+      const base = u.kind === 'artillery' ? (SCORE_CFG.artillery || 250) : (u.score || SCORE_CFG.rifleman || 100);
+      const gained = addScore(base);
+      bumpStreak();
+      refreshSignalPrompt();
+      if (u.kind === 'artillery') {
+        triggerBeat('artillery');
         if (effects) {
           effects.explosion({ x: enemy.position.x, y: 0.9, z: enemy.position.z });
           effects.addShake(0.25);
         }
         sfxCall('explosion');
+      } else if (u.archetype === 'officer') {
+        triggerBeat('officer');
+        playRadio('officer');
       }
+      HUD.showRadio('Parte de bajas', '+' + gained + ' puntos (x' + streak.toFixed(2) + ')', 3);
     },
   };
 
@@ -133,131 +402,6 @@
     },
   };
 
-  // --- Menu start + end-of-game screens ---
-  function exitPointerLockSafe() {
-    try {
-      if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
-    } catch (e) { /* headless / unsupported */ }
-  }
-  function hidePauseOverlay() {
-    const overlay = document.getElementById('pause-overlay');
-    if (overlay) overlay.style.display = 'none';
-  }
-
-  // Wave horn: exactly once per wave.
-  let hornWave = 0;
-  function playWaveHorn() {
-    if (state.wave === hornWave) return;
-    hornWave = state.wave;
-    sfxCall('waveHorn');
-  }
-
-  // Dialogues helper: wave toasts come from js/dialogues.js when present,
-  // otherwise fall back to the default text baked in index.html.
-  function waveToastText(w) {
-    try {
-      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.waveToast === 'function') {
-        return DIALOGUES.waveToast(w);
-      }
-    } catch (e) {}
-    return undefined;
-  }
-
-  // Narrator voice (js/voice.js + js/dialogues.js narrator): Maestro Xu.
-  // Best-effort, silent no-op when speechSynthesis is unavailable.
-  function narrate(text) {
-    if (!text) return;
-    try {
-      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.tts) {
-        Voice.speak(text, { narratorTts: DIALOGUES.narrator.tts });
-      } else {
-        Voice.speak(text);
-      }
-    } catch (e) {}
-  }
-  function narrateWave(w) {
-    try {
-      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateWave === 'function') {
-        narrate(DIALOGUES.narrateWave(w));
-      }
-    } catch (e) {}
-  }
-  function narrateBriefing() {
-    try {
-      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.lines) {
-        narrate(DIALOGUES.narrator.lines.briefing);
-      }
-    } catch (e) {}
-  }
-  function narrateEnd(moment) {
-    try {
-      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateEnd === 'function') {
-        narrate(DIALOGUES.narrateEnd(moment));
-      }
-    } catch (e) {}
-  }
-
-  const btnPlay = document.getElementById('btn-play');
-  if (btnPlay) {
-    btnPlay.addEventListener('click', function () {
-      sfxCall('unlock'); // AudioContext must be created/resumed inside this gesture
-      sfxCall('ambientSea');
-      sfxCall('music'); // "Al otro lado del río" — assets/audio/al_otro_lado_del_rio.mp3
-      Screens.hideMenu();
-      hidePauseOverlay();
-      HUD.show();
-      setPhase(state, 'playing');
-      playWaveHorn();
-      Screens.showIntroToast(waveToastText(state.wave));
-      narrateBriefing();
-      try {
-        const p = canvas.requestPointerLock();
-        if (p && typeof p.catch === 'function') p.catch(function () { /* headless / cooldown */ });
-      } catch (e) { /* pointer lock unavailable (e.g. headless) */ }
-    });
-  }
-
-  const btnMusic = document.getElementById('btn-music');
-  function syncMusicButton() {
-    if (!btnMusic) return;
-    var muted = false;
-    try { if (typeof sfx !== 'undefined' && sfx && typeof sfx.isMuted === 'function') muted = sfx.isMuted(); } catch (e) {}
-    btnMusic.textContent = muted ? '♪ Música: Silenciada (M)' : '♪ Música: Al otro lado del río (M)';
-    btnMusic.setAttribute('aria-pressed', muted ? 'true' : 'false');
-    btnMusic.style.opacity = muted ? '0.65' : '1';
-  }
-  if (btnMusic) {
-    btnMusic.addEventListener('click', function (ev) {
-      if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
-      sfxCall('unlock');
-      sfxCall('toggleMusic');
-      syncMusicButton();
-    });
-  }
-  const btnVoice = document.getElementById('btn-voice');
-  function syncVoiceButton() {
-    if (!btnVoice) return;
-    var off = false;
-    try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.isEnabled === 'function') off = !Voice.isEnabled(); } catch (e) {}
-    btnVoice.textContent = off ? '🎙️ Voz: Silenciada (V)' : '🎙️ Voz: Maestro Xu (V)';
-    btnVoice.setAttribute('aria-pressed', off ? 'false' : 'true');
-    btnVoice.style.opacity = off ? '0.65' : '1';
-  }
-  if (btnVoice) {
-    btnVoice.addEventListener('click', function (ev) {
-      if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
-      try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (e) {}
-      syncVoiceButton();
-    });
-  }
-  window.addEventListener('keydown', function (e) {
-    if (e.code === 'KeyM') { sfxCall('unlock'); sfxCall('toggleMusic'); syncMusicButton(); }
-    if (e.code === 'KeyV') { try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (err) {} syncVoiceButton(); }
-  });
-  syncVoiceButton();
-  try { state.missionTitle = 'Humen, 1841'; } catch (e) {}
-  syncMusicButton();
-
   let lastPhase = state.phase;
   function onPhaseChanged(now) {
     if (now === 'playing') {
@@ -270,8 +414,14 @@
       hidePauseOverlay();
       exitPointerLockSafe();
       sfxCall('victory');
-      Screens.showVictory({ wavesRepelled: WAVES.length, score: state.score || 0 });
-      narrateEnd('victory');
+      // The honest ending: the fort falls on 26 February 1841.
+      playCinematic('humen-fall', {
+        waitForInput: true,
+        continueText: 'Pulsa para cerrar el parte',
+        onEnd: function () {
+          Screens.showVictory({ wavesRepelled: WAVES.length, score: state.score || 0 });
+        },
+      });
       return;
     }
     if (now === 'defeat') {
@@ -281,7 +431,6 @@
       sfxCall('defeat');
       var cause = Screens.detectDefeatCause(state);
       Screens.showDefeat(cause);
-      narrateEnd(cause);
     }
   }
 
@@ -291,6 +440,14 @@
     const now = performance.now();
     const dt = Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
+
+    // 0. Cinematics own the camera and the scene.
+    if (Cinematics.isActive()) {
+      Cinematics.update(dt);
+      if (effects) effects.update(dt);
+      renderer.render(scene, camera);
+      return;
+    }
 
     // 1. Player input -> body velocity + weapon fire (spawns projectiles).
     player.update(dt);
@@ -313,10 +470,17 @@
         if (state.phase === 'playing' && state.wave !== prevWave) {
           Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
           playWaveHorn();
-          Screens.showIntroToast(waveToastText(state.wave));
-          narrateWave(state.wave);
+          if (state.wave === 2) triggerBeat('artillery');
+          if (state.wave === 3) {
+            triggerBeat('assault');
+            playRadio('wave3');
+          }
+          refreshSignalPrompt();
         }
       }
+
+      decayStreak(dt);
+      HUD.tickTimers(dt);
     } else {
       // Menu/paused: the world is frozen, but the camera still follows the
       // settled body so the menu shows the fort from eye height.
@@ -362,6 +526,7 @@
       scene: scene,
       renderer: renderer,
       WAVES: WAVES,
+      cinematics: typeof Cinematics !== 'undefined' ? Cinematics : null,
     };
   }
 })();

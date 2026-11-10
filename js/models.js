@@ -212,6 +212,10 @@ var Models = (function () {
     });
   }
 
+  function hasBritishModel() {
+    return !!britishTemplate;
+  }
+
   function makeBritishSoldier() {
     if (britishTemplate && typeof THREE.SkeletonUtils !== 'undefined') {
       var model = THREE.SkeletonUtils.clone(britishTemplate);
@@ -225,7 +229,10 @@ var Models = (function () {
       });
       model.userData = { type: 'british-soldier' };
       setupSoldierAnim(model);
-      return model;
+      var holder = new THREE.Group();
+      holder.add(model);
+      holder.userData = model.userData;
+      return holder;
     }
     var g = new THREE.Group();
     // Red coat
@@ -333,6 +340,7 @@ var Models = (function () {
   return {
     makeQingSoldier: makeQingSoldier,
     makeBritishSoldier: makeBritishSoldier,
+    hasBritishModel: hasBritishModel,
     loadBritishSoldierModel: loadBritishSoldierModel,
     updateSoldierAnimation: updateSoldierAnimation,
     stopSoldierAnimation: stopSoldierAnimation,

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rig preview — Fuego en Humen</title>
+    <style>
+      html, body { margin: 0; background: #1b1f24; overflow: hidden; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <script src="../vendor/three.min.js"></script>
+    <script src="../js/rig/humanoid.js"></script>
+    <script src="../js/rig/anim.js"></script>
+    <script>
+      // Dev tool: renders the procedural rig so the skinning and the animation
+      // library can be checked without playing the game.
+      //
+      //   tools/rig-preview.html?pose=aim&view=front&faction=british&t=0.4
+      //
+      // Without parameters it renders every pose in a grid.
+      var params = new URLSearchParams(window.location.search);
+      var poseName = (params.get('pose') || '').toLowerCase();
+      var view = (params.get('view') || 'front').toLowerCase();
+      var faction = (params.get('faction') || 'british').toLowerCase();
+      var atTime = parseFloat(params.get('t') || '0.35');
+
+      var scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x2b3138);
+
+      var renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+
+      var camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.05, 100);
+      scene.add(camera);
+
+      var hemi = new THREE.HemisphereLight(0xcfe8ff, 0x40372c, 0.9);
+      scene.add(hemi);
+      var sun = new THREE.DirectionalLight(0xfff2d8, 1.35);
+      sun.position.set(2.5, 6, -4);
+      sun.castShadow = true;
+      scene.add(sun);
+
+      var ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(30, 30),
+        new THREE.MeshStandardMaterial({ color: 0x5b6068, roughness: 1 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      var Clips = RigAnim.Clips;
+      var ALL = {
+        idle: function () { return Clips.idle(); },
+        walk: function () { return Clips.walk(1); },
+        run: function () { return Clips.run(); },
+        aim: function () { return Clips.aim(); },
+        reload: function () { return Clips.reload(); },
+        melee: function () { return Clips.melee(); },
+        kneel: function () { return Clips.kneel(); },
+        death: function () { return Clips.death(); },
+      };
+
+      function label(text, x, y, z) {
+        var c = document.createElement('canvas');
+        c.width = 320; c.height = 80;
+        var g = c.getContext('2d');
+        g.fillStyle = '#0f1215'; g.fillRect(0, 0, 320, 80);
+        g.fillStyle = '#e8e2d4'; g.font = 'bold 34px monospace';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(text, 160, 42);
+        var tex = new THREE.CanvasTexture(c);
+        var spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+        spr.position.set(x, y, z);
+        spr.scale.set(1.05, 0.26, 1);
+        scene.add(spr);
+      }
+
+      if (poseName && ALL[poseName]) {
+        // Single pose, big.
+        var rig = Rig.buildSoldier({ faction: faction });
+        scene.add(rig.group);
+        var anim = new RigAnim.Animator(rig);
+        anim.play(ALL[poseName]());
+        anim.time = atTime;
+        anim.update(0);
+        label(poseName + ' ' + faction + ' t=' + atTime, 0, 2.15, 0);
+        var dist = 2.9;
+        if (view === 'front') camera.position.set(0, 1.05, -dist);
+        else if (view === 'back') camera.position.set(0, 1.05, dist);
+        else if (view === 'side') camera.position.set(dist, 1.05, 0);
+        else camera.position.set(dist * 0.7, 1.05, -dist * 0.7);
+        camera.lookAt(0, 0.95, 0);
+      } else {
+        var names = Object.keys(ALL);
+        names.forEach(function (name, i) {
+          var r = Rig.buildSoldier({ faction: i % 2 === 0 ? 'british' : 'qing' });
+          scene.add(r.group);
+          var col = i % 4;
+          var row = Math.floor(i / 4);
+          var x = (col - 1.5) * 1.15;
+          var z = row * 2.4;
+          r.group.position.set(x, 0, z);
+          var a = new RigAnim.Animator(r);
+          a.play(ALL[name]());
+          a.time = 0.35;
+          a.update(0);
+          label(name, x, 2.1, z);
+        });
+        camera.position.set(0, 1.05, -5.6);
+        camera.lookAt(0, 0.92, 0);
+      }
+
+      renderer.render(scene, camera);
+      window.__ready = true;
+    </script>
+  </body>
+</html>

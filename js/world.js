@@ -12,8 +12,10 @@ var buildWorld = (function () {
     scene.background = new THREE.Color(0x9fc7e8);
     scene.fog = new THREE.Fog(0x9fc7e8, 60, 220);
 
+    // The lights live in the scene, not in `group`: the cinematics hide the
+    // world group, and the sets still need to be lit.
     var hemi = new THREE.HemisphereLight(0xcfe8ff, 0xe6cf9a, 0.85);
-    group.add(hemi);
+    scene.add(hemi);
 
     var sun = new THREE.DirectionalLight(0xfff2d8, 1.1);
     sun.position.set(40, 60, -20);
@@ -24,7 +26,7 @@ var buildWorld = (function () {
     sun.shadow.camera.top = 70;
     sun.shadow.camera.bottom = -70;
     sun.shadow.camera.far = 180;
-    group.add(sun);
+    scene.add(sun);
 
     // --- Ground: sandy beach strip + inland dirt ---
     var sand = new THREE.Mesh(
@@ -190,7 +192,15 @@ var buildWorld = (function () {
       ships.push(ship);
     }
 
-    return { fort: fort, walls: walls, sea: sea, ships: ships, cannons: cannons, colliders: colliders };
+    return {
+      group: group,
+      fort: fort,
+      walls: walls,
+      sea: sea,
+      ships: ships,
+      cannons: cannons,
+      colliders: colliders,
+    };
   }
 
   return buildWorld;

@@ -82,10 +82,10 @@ test('applyPlayerDamage clamps playerHp at 0 and sets defeat phase', () => {
   assert.strictEqual(state.phase, 'defeat');
 });
 
-test('nextWave after clearing wave 3 sets phase to victory', () => {
+test('nextWave after clearing wave 10 sets phase to victory', () => {
   const state = createGameState();
   state.phase = 'playing';
-  state.wave = 3;
+  state.wave = 10;
   nextWave(state);
   assert.strictEqual(state.phase, 'victory');
 });
@@ -99,9 +99,23 @@ test('nextWave advances to the next wave while waves remain', () => {
   assert.strictEqual(state.phase, 'playing');
 });
 
-test('WAVES has exactly 3 entries with escalating counts', () => {
-  assert.strictEqual(WAVES.length, 3);
-  assert.deepStrictEqual(WAVES.map((w) => w.count), [6, 9, 12]);
+test('WAVES has exactly 10 entries with escalating counts', () => {
+  assert.strictEqual(WAVES.length, 10);
+  assert.deepStrictEqual(WAVES.map((w) => w.count), [7, 11, 15, 17, 19, 21, 23, 25, 27, 30]);
+});
+
+test('WAVES entries describe a historical phase and match their archetypes', () => {
+  WAVES.forEach((w, i) => {
+    assert.ok(w.phase, 'phase ' + i + ' has a name');
+    assert.ok(w.date, 'phase ' + i + ' has a date');
+    assert.ok(w.objective, 'phase ' + i + ' has an objective');
+    assert.strictEqual(w.archetypes.length, w.count);
+  });
+  // Difficulty must escalate: hp, damage and density all grow.
+  assert.ok(WAVES[1].hp > WAVES[0].hp);
+  assert.ok(WAVES[WAVES.length - 1].hp > WAVES[1].hp);
+  assert.ok(WAVES[WAVES.length - 1].damage > WAVES[0].damage);
+  assert.ok(WAVES[1].interval < WAVES[0].interval);
 });
 
 test('WEAPONS defines mosquete and sable with combat stats', () => {
