@@ -11,7 +11,7 @@ function runtime() {
     THREE,
     document: { createElement: createCanvas },
   });
-  for (const file of ['assets', 'models', 'world']) {
+  for (const file of ['models', 'world']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', file + '.js'), 'utf8'), context);
   }
   return context;

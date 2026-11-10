@@ -1,7 +1,10 @@
-// Low-poly model builders with optional embedded assets and primitive fallbacks.
+// Low-poly model builders using THREE primitives only (no external assets).
 // Browser global script exposing `Models`; optional Node guard for tooling.
 
 var Models = (function () {
+  var britishTemplate = null;
+  var britishClips = null;
+
   function mat(color) {
     return new THREE.MeshStandardMaterial({ color: color, roughness: 0.9, metalness: 0.0 });
   }
@@ -74,91 +77,226 @@ var Models = (function () {
     return g;
   }
 
-  // --- British soldiers ---------------------------------------------------
-  // One shared PBR GLB serves all three enemy types (tint + scale), with the
-  // old primitives as the offline fallback. Each instance clones its
-  // materials because the impact flash lights one soldier at a time.
-  var BRITISH_HEIGHT = 1.75;
-  var BRITISH_YAW = Math.PI; // the generated GLB faces +Z; enemies face -Z
-  var BRITISH_TINT = {
-    'british-soldier': 0xffffff,
-    'british-runner': 0xd8e4ff,
-    'british-officer': 0xffe2a8,
-  };
-  var BRITISH_SCALE = {
-    'british-soldier': 1,
-    'british-runner': 0.95,
-    'british-officer': 1.06,
-    'sepoy': 0.98,
-  };
-
-  function fitCharacter(holder, targetHeight) {
-    holder.updateMatrixWorld(true);
-    var box = new THREE.Box3().setFromObject(holder);
-    var size = new THREE.Vector3();
-    box.getSize(size);
-    var center = new THREE.Vector3();
-    box.getCenter(center);
-    var scale = targetHeight / (size.y || 1);
-    holder.scale.setScalar(scale);
-    holder.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
-  }
-
-  function buildBritish(type) {
-    if (typeof Assets === 'undefined' || !Assets.has('british')) return null;
-    var root = new THREE.Group();
-    var holder = new THREE.Group();
-    var model = Assets.clone('british');
-    if (!model) return null;
-    model.rotation.y = BRITISH_YAW;
-    holder.add(model);
-    root.add(holder);
-    fitCharacter(holder, BRITISH_HEIGHT);
-
-    var tint = BRITISH_TINT[type] || 0xffffff;
-    root.traverse(function (object) {
-      if (!object.isMesh) return;
-      object.castShadow = true;
-      object.receiveShadow = true;
-      if (!object.material) return;
-      var retint = function (material) {
-        var copy = material.clone();
-        if (copy.color) copy.color.setHex(tint);
-        return copy;
-      };
-      object.material = Array.isArray(object.material)
-        ? object.material.map(retint)
-        : retint(object.material);
-    });
-    root.scale.setScalar(BRITISH_SCALE[type] || 1);
-    root.userData = { type: type };
+  function fitToHeight(root, height) {
+    root.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(root);
+    var size = box.getSize(new THREE.Vector3());
+    if (size.y > 1e-6) root.scale.multiplyScalar(height / size.y);
+    root.updateMatrixWorld(true);
+    box.setFromObject(root);
+    var center = box.getCenter(new THREE.Vector3());
+    root.position.x -= center.x;
+    root.position.z -= center.z;
+    root.position.y -= box.min.y;
     return root;
   }
 
+  function findClip(pattern) {
+    if (!britishClips) return null;
+    for (var i = 0; i < britishClips.length; i++) {
+      if (pattern.test(britishClips[i].name)) return britishClips[i];
+    }
+    return null;
+  }
+
+  function rootSpeed(clip) {
+    if (!clip || !clip.duration) return 0;
+    var tracks = clip.tracks || [];
+    for (var i = 0; i < tracks.length; i++) {
+      var track = tracks[i];
+      if (track.name.indexOf('Hips') === -1 || !/\.position$/.test(track.name)) continue;
+      var values = track.values;
+      var min = Infinity;
+      var max = -Infinity;
+      for (var k = 2; k < values.length; k += 3) {
+        min = Math.min(min, values[k]);
+        max = Math.max(max, values[k]);
+      }
+      return (max - min) / clip.duration;
+    }
+    return 0;
+  }
+
+  // The clip advances the hips forward; the game already moves the pivot, so
+  // keep only the vertical bob to avoid foot-slide + snap at loop.
+  function stripRootMotion(clip) {
+    var tracks = clip.tracks || [];
+    for (var i = 0; i < tracks.length; i++) {
+      var track = tracks[i];
+      if (track.name.indexOf('Hips') === -1 || !/\.position$/.test(track.name)) continue;
+      var values = track.values;
+      var baseX = values[0];
+      var baseZ = values[2];
+      for (var k = 0; k < values.length; k += 3) {
+        values[k] = baseX;
+        values[k + 2] = baseZ;
+      }
+    }
+  }
+
+  function setSoldierAction(anim, name, fade) {
+    if (!anim || anim.current === name || !anim.actions[name]) return;
+    var next = anim.actions[name];
+    var previous = anim.current ? anim.actions[anim.current] : null;
+    next.reset();
+    next.enabled = true;
+    next.setEffectiveWeight(1);
+    next.play();
+    if (previous && previous !== next) next.crossFadeFrom(previous, fade || 0.2, false);
+    anim.current = name;
+  }
+
+  function setupSoldierAnim(model) {
+    if (!britishClips || !britishClips.length || typeof THREE.AnimationMixer !== 'function') return;
+    var walkClip = findClip(/jogging/i) || findClip(/walking/i);
+    var idleClip = findClip(/offensiveidle/i) || findClip(/idle/i);
+    var deathClip = findClip(/dying|death/i);
+    var mixer = new THREE.AnimationMixer(model);
+    var actions = {};
+    if (walkClip) actions.walk = mixer.clipAction(walkClip);
+    if (idleClip) actions.idle = mixer.clipAction(idleClip);
+    if (deathClip) actions.death = mixer.clipAction(deathClip);
+    var current = null;
+    if (actions.walk) {
+      actions.walk.play();
+      current = 'walk';
+    } else if (actions.idle) {
+      actions.idle.play();
+      current = 'idle';
+    }
+    model.userData.anim = {
+      mixer: mixer,
+      actions: actions,
+      current: current,
+      walkSpeed: walkClip && walkClip._rootSpeed > 0.1 ? walkClip._rootSpeed : 1.67,
+    };
+  }
+
+  function updateSoldierAnimation(model, dt, speed, state) {
+    var anim = model && model.userData && model.userData.anim;
+    if (!anim) return;
+    anim.mixer.update(dt);
+    var desired = speed > 0.35 ? 'walk' : 'idle';
+    if (!anim.actions[desired]) desired = anim.actions.walk ? 'walk' : (anim.actions.idle ? 'idle' : null);
+    if (!desired) return;
+    if (desired === 'walk' && anim.actions.walk) {
+      var natural = anim.walkSpeed || 1.67;
+      var scale = speed > 0.1 ? speed / natural : 1;
+      anim.actions.walk.setEffectiveTimeScale(Math.max(0.65, Math.min(1.8, scale)));
+    }
+    setSoldierAction(anim, desired, 0.18);
+  }
+
+  function stopSoldierAnimation(model) {
+    var anim = model && model.userData && model.userData.anim;
+    if (anim) anim.mixer.stopAllAction();
+  }
+
+  function loadBritishSoldierModel(url, onReady) {
+    if (typeof THREE === 'undefined' || !THREE.GLTFLoader) return;
+    var loader = new THREE.GLTFLoader();
+    loader.load(url, function (gltf) {
+      var root = gltf.scene;
+      root.rotation.y = Math.PI; // exported model faces +Z; game forward is -Z
+      fitToHeight(root, 1.92);
+      britishClips = gltf.animations || [];
+      for (var i = 0; i < britishClips.length; i++) {
+        var clip = britishClips[i];
+        clip._rootSpeed = rootSpeed(clip);
+        if (/jogging|walking/i.test(clip.name)) stripRootMotion(clip);
+      }
+      britishTemplate = root;
+      if (typeof onReady === 'function') onReady(root);
+    }, undefined, function (error) {
+      if (typeof console !== 'undefined') console.warn('No se pudo cargar el soldado británico GLB:', error);
+    });
+  }
+
+  function hasBritishModel() {
+    return !!britishTemplate;
+  }
+
   function makeBritishSoldier() {
-    return buildBritish('british-soldier') || britishPrimitive('british-soldier');
+    if (britishTemplate && typeof THREE.SkeletonUtils !== 'undefined') {
+      var model = THREE.SkeletonUtils.clone(britishTemplate);
+      model.traverse(function (node) {
+        if (node.isMesh) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+          node.frustumCulled = false;
+          if (node.material) node.material = node.material.clone();
+        }
+      });
+      model.userData = { type: 'british-soldier' };
+      setupSoldierAnim(model);
+      var holder = new THREE.Group();
+      holder.add(model);
+      holder.userData = model.userData;
+      return holder;
+    }
+    var g = new THREE.Group();
+    // Red coat
+    g.add(box(0.48, 1.0, 0.3, 0xb02a22, 0, 0.85, 0));
+    // White trousers
+    g.add(box(0.16, 0.55, 0.2, 0xe8e4da, -0.12, 0.28, 0));
+    g.add(box(0.16, 0.55, 0.2, 0xe8e4da, 0.12, 0.28, 0));
+    // Head
+    g.add(sphere(0.16, 0xe8b98a, 0, 1.52, 0));
+    // Black shako (tall cylinder) + brim
+    g.add(cyl(0.16, 0.19, 0.3, 0x141414, 0, 1.75, 0, 12));
+    g.add(box(0.3, 0.03, 0.2, 0x141414, 0, 1.62, -0.12));
+    // Musket
+    g.add(makeMusket());
+    g.userData = { type: 'british-soldier' };
+    return g;
   }
 
-  // Light infantry rusher: lighter coat, low cap, short blade — no musket.
-  function makeBritishRunner() {
-    return buildBritish('british-runner') || britishPrimitive('british-runner');
+  function makeShip() {
+    var g = new THREE.Group();
+    var hullColor = 0x5a4230;
+    var deckColor = 0x8a6b4a;
+    // Hull: long box + bow box + forward cone wedge
+    g.add(box(3.2, 1.1, 10, hullColor, 0, 0.6, 0));
+    var bow = box(2.6, 1.0, 3.0, hullColor, 0, 0.55, 6.2);
+    // Simple bow wedge using a scaled cone rotated forward
+    var wedge = cone(1.4, 3.0, hullColor, 0, 0.6, 6.8);
+    wedge.rotation.x = Math.PI / 2;
+    wedge.scale.set(1, 1, 0.8);
+    g.add(bow);
+    g.add(wedge);
+    // Deck
+    g.add(box(2.8, 0.15, 9.4, deckColor, 0, 1.2, 0.4));
+    // Rail strips
+    g.add(box(0.15, 0.5, 9.4, hullColor, -1.5, 1.4, 0.4));
+    g.add(box(0.15, 0.5, 9.4, hullColor, 1.5, 1.4, 0.4));
+    // Masts (3) with white sails (thin boxes)
+    var mastZs = [-3.4, 0.4, 4.2];
+    var mastHs = [6.5, 8.0, 5.5];
+    for (var i = 0; i < 3; i++) {
+      g.add(cyl(0.07, 0.1, mastHs[i], 0x6b4a2f, 0, mastHs[i] / 2 + 1.2, mastZs[i], 8));
+      var sailW = 2.2 - i * 0.25;
+      var sail = box(sailW, 1.8, 0.08, 0xf2ead8, 0, mastHs[i] / 2 + 1.6, mastZs[i]);
+      g.add(sail);
+      var yard = cyl(0.03, 0.03, sailW + 0.6, 0x6b4a2f, 0, mastHs[i] / 2 + 2.5, mastZs[i], 6);
+      yard.rotation.z = Math.PI / 2;
+      g.add(yard);
+    }
+    // Stern cabin
+    g.add(box(2.4, 0.9, 2.0, deckColor, 0, 1.7, -4.2));
+    // White ensign at the stern (no lights, no shadow pass).
+    var ensign = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.0, 0.62),
+      new THREE.MeshStandardMaterial({ map: getEnsignTexture(), side: THREE.DoubleSide, roughness: 1 })
+    );
+    ensign.position.set(0, 3.4, -5.1);
+    ensign.rotation.y = Math.PI;
+    ensign.castShadow = false;
+    ensign.receiveShadow = false;
+    ensign.userData.type = 'ensign';
+    g.add(ensign);
+    g.userData = { type: 'ship' };
+    return g;
   }
-
-  // Officer: maroon coat, gold epaulettes, bicorn hat, sabre.
-  function makeBritishOfficer() {
-    return buildBritish('british-officer') || britishPrimitive('british-officer');
-  }
-
-  // Sepoy of the 37th Madras Native Infantry, always procedural (the GLB is
-  // the redcoat). Same drill as a line soldier, different uniform.
-  function makeSepoy() {
-    return britishPrimitive('sepoy');
-  }
-
-  // --- Fallback soldier: many parts merged into one vertex-coloured mesh ---
-  // One draw call per enemy (34 at the last wave) and materials stay unique per
-  // soldier so the impact flash never lights the whole squad.
-  var britishGeoCache = {};
 
   function part(geometry, color, x, y, z, rx, ry, rz) {
     return { g: geometry, c: color, p: [x || 0, y || 0, z || 0], r: [rx || 0, ry || 0, rz || 0] };
@@ -228,106 +366,6 @@ var Models = (function () {
     return merged;
   }
 
-  var BRIT = {
-    coat: 0xb02a22, coatLight: 0xc04a32, coatDark: 0x7a1f2b,
-    trouser: 0xe8e4da, trouserDark: 0x3a3a44,
-    black: 0x141414, skin: 0xe8b98a,
-    belt: 0xe8e4da, gold: 0xd8a93e,
-    wood: 0x6b4a2f, steel: 0x9a9a9a, iron: 0x3a3a3d,
-    pack: 0x4a3626, blanket: 0x9a9488,
-  };
-
-  function britishParts(type) {
-    var officer = type === 'british-officer';
-    var runner = type === 'british-runner';
-    var sepoy = type === 'sepoy';
-    var coat = officer ? BRIT.coatDark : (runner ? BRIT.coatLight : (sepoy ? 0x3a4a5a : BRIT.coat));
-    var trousers = officer ? BRIT.trouserDark : BRIT.trouser;
-    var parts = [];
-
-    // Legs, boots and coat
-    parts.push(part(new THREE.BoxGeometry(0.16, 0.62, 0.2), trousers, -0.11, 0.51, 0));
-    parts.push(part(new THREE.BoxGeometry(0.16, 0.62, 0.2), trousers, 0.11, 0.51, 0));
-    parts.push(part(new THREE.BoxGeometry(0.17, 0.16, 0.24), BRIT.black, -0.11, 0.09, -0.02));
-    parts.push(part(new THREE.BoxGeometry(0.17, 0.16, 0.24), BRIT.black, 0.11, 0.09, -0.02));
-    parts.push(part(new THREE.BoxGeometry(0.46, 0.62, 0.28), coat, 0, 1.12, 0));
-    parts.push(part(new THREE.BoxGeometry(0.5, 0.2, 0.3), coat, 0, 0.86, 0.02));
-    // Waist belt and cartridge box
-    parts.push(part(new THREE.BoxGeometry(0.48, 0.06, 0.3), BRIT.belt, 0, 0.84, 0));
-    parts.push(part(new THREE.BoxGeometry(0.14, 0.1, 0.06), BRIT.black, 0.16, 0.92, -0.14));
-    // Cross-belts
-    parts.push(part(new THREE.BoxGeometry(0.055, 0.66, 0.02), BRIT.belt, 0, 1.12, -0.152, 0, 0, 0.45));
-    parts.push(part(new THREE.BoxGeometry(0.055, 0.66, 0.02), BRIT.belt, 0, 1.12, -0.152, 0, 0, -0.45));
-    // Shoulder wings (gold for the officer)
-    parts.push(part(new THREE.BoxGeometry(0.13, 0.05, 0.24), officer ? BRIT.gold : coat, -0.27, 1.4, 0));
-    parts.push(part(new THREE.BoxGeometry(0.13, 0.05, 0.24), officer ? BRIT.gold : coat, 0.27, 1.4, 0));
-    // Sleeves and hands
-    parts.push(part(new THREE.BoxGeometry(0.11, 0.48, 0.15), coat, -0.28, 1.14, -0.01));
-    parts.push(part(new THREE.BoxGeometry(0.11, 0.48, 0.15), coat, 0.28, 1.14, -0.01));
-    parts.push(part(new THREE.BoxGeometry(0.1, 0.08, 0.16), BRIT.belt, -0.28, 0.92, -0.01));
-    parts.push(part(new THREE.BoxGeometry(0.1, 0.08, 0.16), BRIT.belt, 0.28, 0.92, -0.01));
-    // Sash for the officer
-    if (officer) parts.push(part(new THREE.BoxGeometry(0.5, 0.07, 0.32), BRIT.gold, 0, 1.0, 0));
-    // Head and hands
-    parts.push(part(new THREE.SphereGeometry(0.145, 10, 8), BRIT.skin, 0, 1.52, 0));
-    parts.push(part(new THREE.SphereGeometry(0.055, 8, 6), BRIT.skin, -0.28, 0.86, -0.05));
-    parts.push(part(new THREE.SphereGeometry(0.055, 8, 6), BRIT.skin, 0.28, 0.86, -0.05));
-
-    // Headgear
-    if (officer) {
-      parts.push(part(new THREE.BoxGeometry(0.5, 0.14, 0.2), BRIT.black, 0, 1.78, 0, 0, 0, 0.08));
-      parts.push(part(new THREE.BoxGeometry(0.52, 0.02, 0.2), BRIT.gold, 0, 1.71, 0, 0, 0, 0.08));
-      parts.push(part(new THREE.ConeGeometry(0.05, 0.18, 8), BRIT.coatDark, 0, 1.94, 0));
-    } else if (runner) {
-      parts.push(part(new THREE.CylinderGeometry(0.15, 0.17, 0.11, 10), BRIT.iron, 0, 1.72, 0));
-      parts.push(part(new THREE.BoxGeometry(0.26, 0.03, 0.16), BRIT.iron, 0, 1.66, -0.1));
-    } else if (sepoy) {
-      // 37th Madras Native Infantry: white turban instead of the shako.
-      parts.push(part(new THREE.CylinderGeometry(0.16, 0.175, 0.14, 10), BRIT.belt, 0, 1.7, 0));
-      parts.push(part(new THREE.SphereGeometry(0.115, 8, 6), BRIT.belt, 0, 1.79, 0));
-      parts.push(part(new THREE.BoxGeometry(0.2, 0.04, 0.12), BRIT.belt, 0, 1.63, -0.1));
-    } else {
-      parts.push(part(new THREE.CylinderGeometry(0.15, 0.17, 0.3, 10), BRIT.black, 0, 1.78, 0));
-      parts.push(part(new THREE.BoxGeometry(0.28, 0.03, 0.16), BRIT.black, 0, 1.64, -0.11));
-      parts.push(part(new THREE.BoxGeometry(0.09, 0.12, 0.02), BRIT.gold, 0, 1.8, -0.165));
-      parts.push(part(new THREE.SphereGeometry(0.045, 8, 6), BRIT.coat, 0, 1.96, 0));
-    }
-
-    // Backpack and rolled blanket for the line infantry
-    if (!officer && !runner) {
-      parts.push(part(new THREE.BoxGeometry(0.32, 0.34, 0.16), BRIT.pack, 0, 1.2, 0.24));
-      parts.push(part(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8), BRIT.blanket, 0, 1.44, 0.26, 0, 0, Math.PI / 2));
-    }
-
-    // Weapon: musket + bayonet, or a short blade
-    if (runner) {
-      parts.push(part(new THREE.BoxGeometry(0.03, 0.02, 0.7), BRIT.steel, 0.26, 1.1, -0.2, -0.3, 0, 0));
-      parts.push(part(new THREE.BoxGeometry(0.05, 0.09, 0.12), BRIT.wood, 0.26, 1.08, 0.18));
-    } else {
-      parts.push(part(new THREE.CylinderGeometry(0.022, 0.022, 1.35, 8), BRIT.iron, 0.24, 1.12, -0.3, Math.PI / 2, 0, 0));
-      parts.push(part(new THREE.BoxGeometry(0.06, 0.1, 0.55), BRIT.wood, 0.24, 1.0, 0.02));
-      if (!officer) {
-        parts.push(part(new THREE.BoxGeometry(0.012, 0.012, 0.45), BRIT.steel, 0.24, 1.12, -1.15));
-      } else {
-        parts.push(part(new THREE.BoxGeometry(0.03, 0.02, 0.85), BRIT.steel, 0.3, 1.05, -0.3, -0.35, 0, 0));
-      }
-    }
-    return parts;
-  }
-
-  function britishPrimitive(type) {
-    if (!britishGeoCache[type]) britishGeoCache[type] = mergeParts(britishParts(type));
-    var mesh = new THREE.Mesh(
-      britishGeoCache[type],
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.05 })
-    );
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    var scale = BRITISH_SCALE[type] || 1;
-    if (scale !== 1) mesh.scale.setScalar(scale);
-    mesh.userData = { type: type };
-    return mesh;
-  }
 
   // --- Historical set dressing ------------------------------------------
   // Every prop below is merged into one vertex-coloured mesh: the whole
@@ -483,65 +521,6 @@ var Models = (function () {
   }
 
   // Congreve rocket rack: the battery that set the junks alight.
-  function makeRocketBattery() {
-    var parts = [];
-    parts.push(pBox(1.5, 0.18, 0.7, NAVY.wood, 0, 0.09, 0));
-    parts.push(pBox(0.14, 0.7, 0.14, NAVY.wood, -0.6, 0.44, 0.2));
-    parts.push(pBox(0.14, 0.7, 0.14, NAVY.wood, 0.6, 0.44, 0.2));
-    for (var i = 0; i < 3; i++) {
-      var rx = -0.42 + i * 0.42;
-      parts.push(pCyl(0.06, 0.06, 0.95, NAVY.iron, rx, 0.62, -0.05, -Math.PI / 5, 0, 0, 8));
-      parts.push(pCone(0.09, 0.22, NAVY.red, rx, 1.12, -0.5, -Math.PI / 5, 0, 0, 8));
-    }
-    return mergedModel(parts, { type: 'rocket-battery', roughness: 0.7, metalness: 0.3 });
-  }
-
-  function makeShip() {
-    var g = new THREE.Group();
-    var hullColor = 0x5a4230;
-    var deckColor = 0x8a6b4a;
-    // Hull: long box + bow box + forward cone wedge
-    g.add(box(3.2, 1.1, 10, hullColor, 0, 0.6, 0));
-    var bow = box(2.6, 1.0, 3.0, hullColor, 0, 0.55, 6.2);
-    // Simple bow wedge using a scaled cone rotated forward
-    var wedge = cone(1.4, 3.0, hullColor, 0, 0.6, 6.8);
-    wedge.rotation.x = Math.PI / 2;
-    wedge.scale.set(1, 1, 0.8);
-    g.add(bow);
-    g.add(wedge);
-    // Deck
-    g.add(box(2.8, 0.15, 9.4, deckColor, 0, 1.2, 0.4));
-    // Rail strips
-    g.add(box(0.15, 0.5, 9.4, hullColor, -1.5, 1.4, 0.4));
-    g.add(box(0.15, 0.5, 9.4, hullColor, 1.5, 1.4, 0.4));
-    // Masts (3) with white sails (thin boxes)
-    var mastZs = [-3.4, 0.4, 4.2];
-    var mastHs = [6.5, 8.0, 5.5];
-    for (var i = 0; i < 3; i++) {
-      g.add(cyl(0.07, 0.1, mastHs[i], 0x6b4a2f, 0, mastHs[i] / 2 + 1.2, mastZs[i], 8));
-      var sailW = 2.2 - i * 0.25;
-      var sail = box(sailW, 1.8, 0.08, 0xf2ead8, 0, mastHs[i] / 2 + 1.6, mastZs[i]);
-      g.add(sail);
-      var yard = cyl(0.03, 0.03, sailW + 0.6, 0x6b4a2f, 0, mastHs[i] / 2 + 2.5, mastZs[i], 6);
-      yard.rotation.z = Math.PI / 2;
-      g.add(yard);
-    }
-    // Stern cabin
-    g.add(box(2.4, 0.9, 2.0, deckColor, 0, 1.7, -4.2));
-    // White ensign at the stern (no lights, no shadow pass).
-    var ensign = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.0, 0.62),
-      new THREE.MeshStandardMaterial({ map: getEnsignTexture(), side: THREE.DoubleSide, roughness: 1 })
-    );
-    ensign.position.set(0, 3.4, -5.1);
-    ensign.rotation.y = Math.PI;
-    ensign.castShadow = false;
-    ensign.receiveShadow = false;
-    ensign.userData.type = 'ensign';
-    g.add(ensign);
-    g.userData = { type: 'ship' };
-    return g;
-  }
 
   // --- Fort wall facade --------------------------------------------------
   // One 256px stone canvas tiled every 3.2 m, one cached geometry per box
@@ -770,48 +749,6 @@ var Models = (function () {
     return g;
   }
 
-  function makeCannon() {
-    if (typeof Assets !== 'undefined' && Assets.has('cannon')) {
-      var cannon = Assets.clone('cannon');
-      cannon.userData.type = 'cannon';
-      cannon.traverse(function (object) {
-        if (object.isMesh) {
-          object.castShadow = true;
-          object.receiveShadow = true;
-        }
-      });
-      return cannon;
-    }
-    var g = new THREE.Group();
-    // Carriage
-    g.add(box(0.7, 0.35, 1.6, 0x5a4230, 0, 0.35, 0));
-    // Barrel (points forward -Z)
-    var barrel = cyl(0.14, 0.18, 2.0, 0x2b2b2b, 0, 0.75, -0.5, 12);
-    barrel.rotation.x = Math.PI / 2 - 0.12;
-    g.add(barrel);
-    // Muzzle ring
-    var muzzle = cyl(0.19, 0.19, 0.12, 0x1f1f1f, 0, 0.87, -1.42, 12);
-    muzzle.rotation.x = Math.PI / 2 - 0.12;
-    g.add(muzzle);
-    // Wheels
-    function wheel(x, z) {
-      var w = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.42, 0.42, 0.12, 12),
-        mat(0x4a3421)
-      );
-      w.position.set(x, 0.42, z);
-      w.rotation.z = Math.PI / 2;
-      w.castShadow = true;
-      return w;
-    }
-    g.add(wheel(-0.45, 0.4));
-    g.add(wheel(0.45, 0.4));
-    g.add(wheel(-0.45, -0.4));
-    g.add(wheel(0.45, -0.4));
-    g.userData = { type: 'cannon' };
-    return g;
-  }
-
   // Unit banners: no national flag existed in 1841, so the garrison flies
   // yellow standards with a character (勇, "brave") and a red border.
   var bannerTextures = {};
@@ -894,28 +831,60 @@ var Models = (function () {
     return g;
   }
 
+
+  function makeCannon() {
+    var g = new THREE.Group();
+    // Carriage
+    g.add(box(0.7, 0.35, 1.6, 0x5a4230, 0, 0.35, 0));
+    // Barrel (points forward -Z)
+    var barrel = cyl(0.14, 0.18, 2.0, 0x2b2b2b, 0, 0.75, -0.5, 12);
+    barrel.rotation.x = Math.PI / 2 - 0.12;
+    g.add(barrel);
+    // Muzzle ring
+    var muzzle = cyl(0.19, 0.19, 0.12, 0x1f1f1f, 0, 0.87, -1.42, 12);
+    muzzle.rotation.x = Math.PI / 2 - 0.12;
+    g.add(muzzle);
+    // Wheels
+    function wheel(x, z) {
+      var w = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.42, 0.42, 0.12, 12),
+        mat(0x4a3421)
+      );
+      w.position.set(x, 0.42, z);
+      w.rotation.z = Math.PI / 2;
+      w.castShadow = true;
+      return w;
+    }
+    g.add(wheel(-0.45, 0.4));
+    g.add(wheel(0.45, 0.4));
+    g.add(wheel(-0.45, -0.4));
+    g.add(wheel(0.45, -0.4));
+    g.userData = { type: 'cannon' };
+    return g;
+  }
+
   return {
-    makeQingSoldier: makeQingSoldier,
-    makeBritishSoldier: makeBritishSoldier,
-    makeBritishRunner: makeBritishRunner,
-    makeBritishOfficer: makeBritishOfficer,
-    makeShip: makeShip,
     makeSteamer: makeSteamer,
     makeJunk: makeJunk,
     makeChainBoom: makeChainBoom,
     makeFireRaft: makeFireRaft,
     makeVillage: makeVillage,
-    makeSepoy: makeSepoy,
     makeJingal: makeJingal,
     makeRattanShield: makeRattanShield,
-    makeRocketBattery: makeRocketBattery,
+    makeTower: makeTower,
     getBannerTexture: getBannerTexture,
     getFlagTexture: getFlagTexture,
     getEnsignTexture: getEnsignTexture,
-    makeFortWall: makeFortWall,
-    makeTower: makeTower,
-    makeCannon: makeCannon,
     makeFlag: makeFlag,
+    makeQingSoldier: makeQingSoldier,
+    makeBritishSoldier: makeBritishSoldier,
+    hasBritishModel: hasBritishModel,
+    loadBritishSoldierModel: loadBritishSoldierModel,
+    updateSoldierAnimation: updateSoldierAnimation,
+    stopSoldierAnimation: stopSoldierAnimation,
+    makeShip: makeShip,
+    makeFortWall: makeFortWall,
+    makeCannon: makeCannon,
   };
 })();
 

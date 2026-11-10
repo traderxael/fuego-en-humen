@@ -89,7 +89,7 @@ test('buildWorld monta la flota histórica sin luces ni colliders extra', () => 
     THREE,
     document: { createElement: createCanvas },
   });
-  for (const file of ['assets', 'models', 'world']) {
+  for (const file of ['models', 'world']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', file + '.js'), 'utf8'), context);
   }
   const scene = new THREE.Scene();
@@ -110,19 +110,17 @@ test('buildWorld monta la flota histórica sin luces ni colliders extra', () => 
     'las balsas se mecen');
 });
 
-test('jingales y batería de cohetes son props fusionados', () => {
+test('los jingales son props fusionados', () => {
   const Models = runtime();
   const jingal = Models.makeJingal();
   assert.equal(jingal.userData.type, 'jingal');
   assert.equal(jingal.isMesh, true);
-  const rockets = Models.makeRocketBattery();
-  assert.equal(rockets.userData.type, 'rocket-battery');
-  assert.equal(lights(rockets), 0);
+  assert.equal(lights(jingal), 0);
 });
 
 test('el fuerte monta cuatro jingales en el parapeto', () => {
   const context = vm.createContext({ THREE, document: { createElement: createCanvas } });
-  for (const file of ['assets', 'models', 'world']) {
+  for (const file of ['models', 'world']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', file + '.js'), 'utf8'), context);
   }
   const world = context.buildWorld(new THREE.Scene());

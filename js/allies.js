@@ -1,9 +1,26 @@
-// Qing garrison combat: the eight soldiers adopted from world.garrison aim at
-// the nearest British soldier with line of sight, fire muskets and (the four on
-// the ground) patrol the courtyard. They have no physics bodies: they cannot be
-// hit, pushed or hit by friendly fire, and they never join `enemies`.
+// Qing garrison that fights: eight rigged soldiers, four on the walls and
+// four patrolling the courtyard. They pick the nearest British soldier with
+// line of sight, aim, fire and animate with the shared rig clips. They have no
+// physics bodies: they cannot be hit, pushed or hit by friendly fire, and they
+// never join `enemies` (so they do not affect wave clearing).
 
 var Allies = (function () {
+  var CLIP = {};
+
+  function clip(name) {
+    if (CLIP[name]) return CLIP[name];
+    if (typeof RigAnim === 'undefined' || !RigAnim.Clips) return null;
+    var C = RigAnim.Clips;
+    switch (name) {
+      case 'idle': CLIP[name] = C.idle(); break;
+      case 'walk': CLIP[name] = C.walk(1); break;
+      case 'aim': CLIP[name] = C.aim(); break;
+      case 'fire': CLIP[name] = C.fire(); break;
+      default: return null;
+    }
+    return CLIP[name];
+  }
+
   function create(options) {
     var opts = options || {};
     var world = opts.world;
@@ -15,25 +32,32 @@ var Allies = (function () {
     var list = [];
     if (!fort || !logic) return { list: list, update: function () {} };
 
-    var garrison = Array.isArray(world.garrison) ? world.garrison : [];
     for (var i = 0; i < logic.ALLY_DEFS.length; i++) {
       var def = logic.ALLY_DEFS[i];
-      var pivot = garrison[i];
-      if (!pivot) {
-        if (typeof Models === 'undefined' || typeof Models.makeQingSoldier !== 'function') continue;
-        pivot = Models.makeQingSoldier();
-        pivot.position.set(def.fortLocal[0], def.fortLocal[1], def.fortLocal[2]);
-        fort.add(pivot);
+      var pivot = new THREE.Group();
+      var rig = null;
+      var animator = null;
+      if (typeof Rig !== 'undefined' && Rig.buildSoldier) {
+        rig = Rig.buildSoldier({ faction: 'qing' });
+        if (typeof RigAnim !== 'undefined' && RigAnim.Animator) {
+          animator = new RigAnim.Animator(rig);
+          animator.play(clip('idle'), { fade: 0 });
+        }
+        pivot.add(rig.group);
+      } else if (typeof Models !== 'undefined' && Models.makeQingSoldier) {
+        pivot.add(Models.makeQingSoldier());
       }
-      pivot.userData = pivot.userData || {};
-      pivot.userData.ally = true;
-      // The courtyard patrols carry rattan shields on their left arm.
-      if (def.mobile && typeof Models !== 'undefined' && typeof Models.makeRattanShield === 'function') {
+      pivot.position.set(def.fortLocal[0], def.fortLocal[1], def.fortLocal[2]);
+      pivot.userData = { ally: true, animState: 'idle', rig: rig, animator: animator };
+
+      if (def.mobile && typeof Models !== 'undefined' && Models.makeRattanShield) {
         var shield = Models.makeRattanShield();
         shield.position.set(0.3, 1.0, -0.2);
         shield.rotation.y = 0.3;
         pivot.add(shield);
       }
+
+      fort.add(pivot);
       list.push({
         pivot: pivot,
         def: def,
@@ -43,6 +67,16 @@ var Allies = (function () {
         nextFireAt: 0,
         target: null,
       });
+    }
+
+    function setAnim(ally, name, fade, speed) {
+      var data = ally.pivot.userData;
+      if (!data || !data.animator) return;
+      if (data.animState !== name) {
+        data.animState = name;
+        data.animator.play(clip(name), { fade: fade == null ? 0.2 : fade });
+      }
+      if (speed != null) data.animator.speed = speed;
     }
 
     function worldPosition(ally) {
@@ -78,6 +112,8 @@ var Allies = (function () {
       }
       if (effects && typeof effects.muzzleFlash === 'function') effects.muzzleFlash(from, dir);
       sfxCall('enemyShot', from);
+      var data = ally.pivot.userData;
+      if (data && data.animator) data.animator.playAdditive(clip('fire'), 1);
       ally.nextFireAt = time + logic.FIRE_COOLDOWN;
     }
 
@@ -100,8 +136,9 @@ var Allies = (function () {
       var step = Math.min(logic.PATROL_SPEED * dt, dist);
       ally.pivot.position.x = px + (dx / dist) * step;
       ally.pivot.position.z = pz + (dz / dist) * step;
-      // The qing model faces -Z, so yaw = atan2(-dx, -dz).
+      // The qing rig faces -Z, so yaw = atan2(-dx, -dz).
       ally.pivot.rotation.y = Math.atan2(-dx, -dz);
+      setAnim(ally, 'walk', 0.25, 1);
     }
 
     function update(dt, player, time) {
@@ -129,10 +166,15 @@ var Allies = (function () {
             -(target.position.x - position.x),
             -(target.position.z - position.z)
           );
+          setAnim(ally, 'aim', 0.2, 1);
           if (logic.canFire(now, ally.nextFireAt)) fire(ally, eye, target, now);
-          continue;
+        } else if (ally.mobile) {
+          patrol(ally, dt);
+        } else {
+          setAnim(ally, 'idle', 0.3, 1);
         }
-        if (ally.mobile) patrol(ally, dt);
+        var data = ally.pivot.userData;
+        if (data && data.animator) data.animator.update(dt);
       }
     }
 

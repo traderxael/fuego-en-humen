@@ -18,15 +18,38 @@ var sfx = (function () {
   var unlocked = false;
   var seaStarted = false;
 
-  // Camera pose for cheap spatialization; safe to set before unlock.
-  var listener = { x: 0, y: 1.7, z: 24, yaw: 0 };
-  function setListener(pos, yaw) {
-    if (!pos) return;
-    if (Number.isFinite(pos.x)) listener.x = pos.x;
-    if (Number.isFinite(pos.y)) listener.y = pos.y;
-    if (Number.isFinite(pos.z)) listener.z = pos.z;
-    if (Number.isFinite(yaw)) listener.yaw = yaw;
+  // --- Music: "Al otro lado del río" (assets/audio/al_otro_lado_del_rio.mp3) ---
+  var MUSIC_URL = 'assets/audio/al_otro_lado_del_rio.mp3';
+  var MUSIC_LEVEL = 0.35;
+  var bgMusic = null;
+  var musicStarted = false;
+  var musicMuted = false;
+
+  function music() {
+    if (musicMuted) return bgMusic;
+    if (musicStarted) {
+      if (bgMusic && bgMusic.paused) { try { bgMusic.play(); } catch (e) {} }
+      return bgMusic;
+    }
+    if (typeof window === 'undefined' || typeof window.Audio !== 'function') return null;
+    try {
+      musicStarted = true;
+      bgMusic = new window.Audio(MUSIC_URL);
+      bgMusic.loop = true;
+      bgMusic.volume = musicMuted ? 0 : MUSIC_LEVEL;
+      bgMusic.preload = 'auto';
+      var p = bgMusic.play();
+      if (p && typeof p.catch === 'function') p.catch(function () {});
+    } catch (e) {
+      bgMusic = null;
+    }
+    return bgMusic;
   }
+  function stopMusic() { try { if (bgMusic) bgMusic.pause(); } catch (e) {} }
+  function setMusicVolume(v) { try { var n = Number(v); if (!Number.isFinite(n)) return; MUSIC_LEVEL = Math.max(0, Math.min(1, n)); if (bgMusic) bgMusic.volume = musicMuted ? 0 : MUSIC_LEVEL; } catch (e) {} }
+  function isMuted() { return !!musicMuted; }
+  function toggleMusic() { musicMuted = !musicMuted; try { if (typeof localStorage !== 'undefined') localStorage.setItem('fuego-music-muted', musicMuted ? '1' : '0'); } catch (e) {} if (!bgMusic) return musicMuted ? null : music(); try { if (musicMuted) bgMusic.pause(); else { bgMusic.volume = MUSIC_LEVEL; bgMusic.play(); } } catch (e) {} return bgMusic; }
+  function setMuted(v) { var want = v === true; if (want === musicMuted) return; toggleMusic(); }
 
   function audioCtor() {
     if (typeof window === 'undefined') return null;
@@ -98,7 +121,7 @@ var sfx = (function () {
     filter.frequency.setValueAtTime(opts.freq || 800, t0);
     if (opts.freqEnd) filter.frequency.exponentialRampToValueAtTime(opts.freqEnd, t0 + (opts.seconds || 0.3));
     filter.Q.value = opts.q || 0.8;
-    var g = envelope(c, opts.dest || master, t0, opts.peak || 0.5, opts.attack || 0.005, opts.decay || opts.seconds || 0.2);
+    var g = envelope(c, master, t0, opts.peak || 0.5, opts.attack || 0.005, opts.decay || opts.seconds || 0.2);
     src.connect(filter);
     filter.connect(g);
     src.start(t0);
@@ -111,28 +134,10 @@ var sfx = (function () {
     osc.frequency.setValueAtTime(opts.freq || 440, t0);
     if (opts.freqEnd) osc.frequency.exponentialRampToValueAtTime(opts.freqEnd, t0 + (opts.glide || opts.seconds || 0.2));
     if (opts.detune) osc.detune.value = opts.detune;
-    var g = envelope(c, opts.dest || master, t0, opts.peak || 0.3, opts.attack || 0.01, opts.decay || opts.seconds || 0.2);
+    var g = envelope(c, master, t0, opts.peak || 0.3, opts.attack || 0.01, opts.decay || opts.seconds || 0.2);
     osc.connect(g);
     osc.start(t0);
     osc.stop(t0 + (opts.seconds || 0.2) + 0.1);
-  }
-
-  // One StereoPanner per positional one-shot; distance gain is folded into
-  // each voice's peak. Returns null when the source is too far to be heard,
-  // so callers skip node creation entirely. Falls back to centred master
-  // when no position is given or StereoPanner is unavailable.
-  function spatialDest(c, pos, maxDist) {
-    if (!pos || typeof SpatialLogic === 'undefined') return { dest: master, gain: 1 };
-    var g = SpatialLogic.spatialGains(listener, pos, maxDist);
-    if (g.gain < 0.01) return null;
-    var dest = master;
-    if (typeof c.createStereoPanner === 'function') {
-      var p = c.createStereoPanner();
-      p.pan.value = g.pan;
-      p.connect(master);
-      dest = p;
-    }
-    return { dest: dest, gain: g.gain };
   }
 
   // --- Public API ---
@@ -147,14 +152,13 @@ var sfx = (function () {
     } catch (e) { /* stay silent */ }
   }
 
-  // Enemy fire: same shape, much softer. Optional pos spatializes it.
-  function enemyShot(pos) {
+  // Enemy fire: same shape, much softer.
+  function enemyShot() {
     var c = ready(); if (!c) return;
     try {
-      var sp = spatialDest(c, pos, 60); if (!sp) return;
       var t = c.currentTime;
-      playNoise(c, t, { seconds: 0.13, filterType: 'lowpass', freq: 750, freqEnd: 180, peak: 0.2 * sp.gain, attack: 0.004, decay: 0.12, q: 0.6, dest: sp.dest });
-      playTone(c, t, { type: 'square', freq: 130, freqEnd: 55, glide: 0.1, seconds: 0.1, peak: 0.09 * sp.gain, attack: 0.003, decay: 0.1, dest: sp.dest });
+      playNoise(c, t, { seconds: 0.13, filterType: 'lowpass', freq: 750, freqEnd: 180, peak: 0.2, attack: 0.004, decay: 0.12, q: 0.6 });
+      playTone(c, t, { type: 'square', freq: 130, freqEnd: 55, glide: 0.1, seconds: 0.1, peak: 0.09, attack: 0.003, decay: 0.1 });
     } catch (e) { /* stay silent */ }
   }
 
@@ -168,21 +172,14 @@ var sfx = (function () {
     } catch (e) { /* stay silent */ }
   }
 
-  // Reload: the full ramrod sequence scheduled at once (no timers), scaled
-  // to the weapon's actual reloadTime: click, ram swish, seat thump, clicks.
-  function reload(reloadTime) {
+  // Reload: two clicks ~120 ms apart.
+  function reload() {
     var c = ready(); if (!c) return;
     try {
       var t = c.currentTime;
-      var total = Number.isFinite(reloadTime) && reloadTime > 0
-        ? reloadTime
-        : ((typeof WEAPONS !== 'undefined' && WEAPONS.mosquete && WEAPONS.mosquete.reloadTime) || 2.6);
-      var k = total / 2.6;
-      playTone(c, t, { type: 'square', freq: 1250, seconds: 0.03, peak: 0.16, attack: 0.002, decay: 0.03 });
-      playNoise(c, t + 0.45 * k, { seconds: 0.25, filterType: 'bandpass', freq: 1800, freqEnd: 600, peak: 0.1, attack: 0.03, decay: 0.22, q: 1.2 });
-      playTone(c, t + 1.1 * k, { type: 'sine', freq: 300, freqEnd: 120, glide: 0.1, seconds: 0.12, peak: 0.14, attack: 0.004, decay: 0.11 });
-      playTone(c, t + 1.9 * k, { type: 'square', freq: 900, seconds: 0.03, peak: 0.14, attack: 0.002, decay: 0.03 });
-      playTone(c, t + 2.45 * k, { type: 'square', freq: 1400, seconds: 0.04, peak: 0.16, attack: 0.002, decay: 0.04 });
+      [0, 0.12].forEach(function (offset, i) {
+        playTone(c, t + offset, { type: 'square', freq: i === 0 ? 1250 : 830, seconds: 0.03, peak: 0.16, attack: 0.002, decay: 0.03 });
+      });
     } catch (e) { /* stay silent */ }
   }
 
@@ -224,113 +221,25 @@ var sfx = (function () {
     } catch (e) { /* stay silent */ }
   }
 
-  // Fort / enemy cannon: deep boom with a long low rumble. Optional pos.
-  function cannon(pos) {
-    var c = ready(); if (!c) return;
-    try {
-      var sp = spatialDest(c, pos, 120); if (!sp) return;
-      var t = c.currentTime;
-      playNoise(c, t, { seconds: 0.45, filterType: 'lowpass', freq: 420, freqEnd: 70, peak: 0.75 * sp.gain, attack: 0.004, decay: 0.4, q: 0.8, dest: sp.dest });
-      playTone(c, t, { type: 'sine', freq: 68, freqEnd: 26, glide: 0.5, seconds: 0.55, peak: 0.5 * sp.gain, attack: 0.006, decay: 0.5, dest: sp.dest });
-      playTone(c, t, { type: 'square', freq: 120, freqEnd: 45, glide: 0.2, seconds: 0.22, peak: 0.12 * sp.gain, attack: 0.004, decay: 0.2, dest: sp.dest });
-    } catch (e) { /* stay silent */ }
-  }
-
-  // Cannonball impact: bigger, dirtier rumble than the shot. Optional pos.
-  function explosion(pos) {
-    var c = ready(); if (!c) return;
-    try {
-      var sp = spatialDest(c, pos, 90); if (!sp) return;
-      var t = c.currentTime;
-      playNoise(c, t, { seconds: 0.9, filterType: 'lowpass', freq: 260, freqEnd: 45, peak: 0.65 * sp.gain, attack: 0.005, decay: 0.85, q: 0.7, dest: sp.dest });
-      playTone(c, t, { type: 'sine', freq: 52, freqEnd: 22, glide: 0.7, seconds: 0.8, peak: 0.4 * sp.gain, attack: 0.004, decay: 0.75, dest: sp.dest });
-    } catch (e) { /* stay silent */ }
-  }
-
-  // Kill confirmation: distinct rising-then-falling tick, never the hit thud.
-  function kill() {
+  // Fort / enemy cannon: deep boom with a long low rumble.
+  function cannon() {
     var c = ready(); if (!c) return;
     try {
       var t = c.currentTime;
-      playTone(c, t, { type: 'triangle', freq: 740, freqEnd: 370, glide: 0.12, seconds: 0.13, peak: 0.22, attack: 0.003, decay: 0.12 });
-      playNoise(c, t, { seconds: 0.04, filterType: 'highpass', freq: 2500, peak: 0.08, attack: 0.002, decay: 0.04 });
+      playNoise(c, t, { seconds: 0.45, filterType: 'lowpass', freq: 420, freqEnd: 70, peak: 0.75, attack: 0.004, decay: 0.4, q: 0.8 });
+      playTone(c, t, { type: 'sine', freq: 68, freqEnd: 26, glide: 0.5, seconds: 0.55, peak: 0.5, attack: 0.006, decay: 0.5 });
+      playTone(c, t, { type: 'square', freq: 120, freqEnd: 45, glide: 0.2, seconds: 0.22, peak: 0.12, attack: 0.004, decay: 0.2 });
     } catch (e) { /* stay silent */ }
   }
 
-  // Low-HP heartbeat: two soft thumps; main.js owns the cadence.
-  function heartbeat() {
+  // Cannonball impact: bigger, dirtier rumble than the shot.
+  function explosion() {
     var c = ready(); if (!c) return;
     try {
       var t = c.currentTime;
-      playTone(c, t, { type: 'sine', freq: 55, freqEnd: 40, glide: 0.1, seconds: 0.12, peak: 0.3, attack: 0.004, decay: 0.11 });
-      playTone(c, t + 0.16, { type: 'sine', freq: 50, freqEnd: 38, glide: 0.09, seconds: 0.1, peak: 0.2, attack: 0.004, decay: 0.09 });
+      playNoise(c, t, { seconds: 0.9, filterType: 'lowpass', freq: 260, freqEnd: 45, peak: 0.65, attack: 0.005, decay: 0.85, q: 0.7 });
+      playTone(c, t, { type: 'sine', freq: 52, freqEnd: 22, glide: 0.7, seconds: 0.8, peak: 0.4, attack: 0.004, decay: 0.75 });
     } catch (e) { /* stay silent */ }
-  }
-
-  // War drums: one synthesized 4-beat loop (72 BPM), very quiet under the
-  // battle. One BufferSource at a time; stop ramps down to avoid clicks.
-  var drumsBuffer = null;
-  var drumsSrc = null;
-  var drumsGain = null;
-
-  function makeDrumsBuffer(c) {
-    var beat = 60 / 72;
-    var dur = beat * 4;
-    var buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
-    var d = buf.getChannelData(0);
-    function thump(at, accent) {
-      var start = Math.floor(at * c.sampleRate);
-      var len = Math.floor(0.4 * c.sampleRate);
-      for (var i = 0; i < len && start + i < d.length; i++) {
-        var tt = i / c.sampleRate;
-        var env = Math.exp(-tt * 9);
-        var phase = 2 * Math.PI * (58 * tt + 20 * tt * Math.exp(-tt * 12));
-        d[start + i] += Math.sin(phase) * env * 0.9 * accent;
-        if (tt < 0.02) d[start + i] += (Math.random() * 2 - 1) * Math.exp(-tt * 60) * 0.25 * accent;
-      }
-    }
-    for (var b = 0; b < 4; b++) {
-      thump(b * beat, b === 0 ? 1.0 : 0.75);
-      thump(b * beat + beat * 0.5, 0.3);
-    }
-    return buf;
-  }
-
-  function startWarDrums() {
-    var c = ready(); if (!c) return;
-    try {
-      if (drumsSrc) return;
-      if (!drumsBuffer) drumsBuffer = makeDrumsBuffer(c);
-      drumsSrc = c.createBufferSource();
-      drumsSrc.buffer = drumsBuffer;
-      drumsSrc.loop = true;
-      var filter = c.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 300;
-      drumsGain = c.createGain();
-      drumsGain.gain.value = 0.05;
-      drumsSrc.connect(filter);
-      filter.connect(drumsGain);
-      drumsGain.connect(master);
-      drumsSrc.start();
-    } catch (e) {
-      drumsSrc = null;
-      drumsGain = null;
-    }
-  }
-
-  function stopWarDrums() {
-    if (!drumsSrc || !ctx) return;
-    try {
-      var src = drumsSrc;
-      var g = drumsGain;
-      drumsSrc = null;
-      drumsGain = null;
-      var t = ctx.currentTime;
-      g.gain.setValueAtTime(g.gain.value, t);
-      g.gain.linearRampToValueAtTime(0.0001, t + 0.15);
-      src.stop(t + 0.2);
-    } catch (e) { /* already stopped */ }
   }
 
   // Footstep / landing: short filtered thud.
@@ -402,16 +311,17 @@ var sfx = (function () {
 
   return {
     unlock: unlock,
-    setListener: setListener,
+    music: music,
+    stopMusic: stopMusic,
+    setMusicVolume: setMusicVolume,
+    toggleMusic: toggleMusic,
+    isMuted: isMuted,
+    setMuted: setMuted,
     shot: shot,
     enemyShot: enemyShot,
     swish: swish,
     reload: reload,
     hit: hit,
-    kill: kill,
-    heartbeat: heartbeat,
-    startWarDrums: startWarDrums,
-    stopWarDrums: stopWarDrums,
     waveHorn: waveHorn,
     victory: victory,
     defeat: defeat,
