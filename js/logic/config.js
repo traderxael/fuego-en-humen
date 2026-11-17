@@ -82,6 +82,18 @@ var SCORE = {
   signalKey: 'KeyG',  // call for support
 };
 
+// Medkits & fort medical station.
+var MEDKIT = {
+  healAmount: 45,
+  stationHealAmount: 65,
+  healDuration: 1.8,
+  stationCooldown: 12.0,
+  stationRange: 3.4,
+  initialCharges: 2,
+  maxCharges: 3,
+  key: 'KeyH',
+};
+
 if (typeof module !== 'undefined') {
-  module.exports = { PLAYER_HP, FORT_INTEGRITY, WEAPONS, WAVES, SCORE };
+  module.exports = { PLAYER_HP, FORT_INTEGRITY, WEAPONS, WAVES, SCORE, MEDKIT };
 }

@@ -1,12 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { WEAPONS, WAVES, PLAYER_HP, FORT_INTEGRITY } = require('../js/logic/config');
+const { WEAPONS, WAVES, PLAYER_HP, FORT_INTEGRITY, MEDKIT } = require('../js/logic/config');
 const { createGameState, setPhase, nextWave } = require('../js/logic/state');
 const {
   startReload,
   applyWaveDamage,
   applyPlayerDamage,
+  startHeal,
+  applyPlayerHeal,
   steerTowards,
 } = require('../js/logic/combat');
 
@@ -133,4 +135,26 @@ test('steerTowards returns a finite unit vector, NaN-safe for zero distance', ()
   assert.ok(Number.isFinite(unit.x));
   assert.ok(Number.isFinite(unit.z));
   assert.ok(Math.abs(Math.hypot(unit.x, unit.z) - 1) < 1e-9);
+});
+
+test('startHeal and applyPlayerHeal manage portable medkits and medical stations cleanly', () => {
+  const state = createGameState();
+  assert.strictEqual(state.medkits, MEDKIT.initialCharges);
+  assert.strictEqual(startHeal(state, false), false, 'cannot heal while in menu');
+
+  state.phase = 'playing';
+  assert.strictEqual(startHeal(state, false), false, 'cannot heal at full HP');
+
+  applyPlayerDamage(state, 60);
+  assert.strictEqual(state.playerHp, 40);
+  assert.strictEqual(startHeal(state, false), true, 'portable medkit starts healing');
+  assert.strictEqual(state.medkits, MEDKIT.initialCharges - 1);
+  assert.ok(state.healingUntil > state.time);
+  assert.strictEqual(startHeal(state, false), false, 'cannot double-start heal while healing');
+
+  state.time = state.healingUntil + 0.1;
+  assert.strictEqual(applyPlayerHeal(state, MEDKIT.healAmount), 85);
+  assert.strictEqual(startHeal(state, true), true, 'station heal does not consume portable medkit');
+  assert.strictEqual(state.medkits, MEDKIT.initialCharges - 1);
+  assert.strictEqual(applyPlayerHeal(state, MEDKIT.stationHealAmount), PLAYER_HP, 'HP clamps at 100');
 });

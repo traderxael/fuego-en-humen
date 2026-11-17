@@ -3,7 +3,13 @@
 
 var logicConfig = (typeof module !== 'undefined' && module.exports)
   ? require('./config')
-  : { PLAYER_HP: PLAYER_HP, FORT_INTEGRITY: FORT_INTEGRITY, WEAPONS: WEAPONS, WAVES: WAVES };
+  : {
+      PLAYER_HP: PLAYER_HP,
+      FORT_INTEGRITY: FORT_INTEGRITY,
+      WEAPONS: WEAPONS,
+      WAVES: WAVES,
+      MEDKIT: (typeof MEDKIT !== 'undefined' ? MEDKIT : null),
+    };
 
 var LEGAL_TRANSITIONS = {
   menu: ['playing'],
@@ -14,6 +20,9 @@ var LEGAL_TRANSITIONS = {
 };
 
 function createGameState() {
+  var initialMedkits = (logicConfig.MEDKIT && typeof logicConfig.MEDKIT.initialCharges === 'number')
+    ? logicConfig.MEDKIT.initialCharges
+    : 2;
   return {
     phase: 'menu',
     wave: 1,
@@ -22,6 +31,8 @@ function createGameState() {
     score: 0,
     time: 0,
     reloadingUntil: 0,
+    medkits: initialMedkits,
+    healingUntil: 0,
   };
 }
 

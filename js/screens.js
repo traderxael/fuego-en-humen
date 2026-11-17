@@ -147,11 +147,12 @@ var Screens = (function () {
     setVisible(e.defeat, true);
   }
 
-  // Battle-start toast; CSS animation handles the 4 s auto-hide.
-  function showIntroToast() {
+  // Battle-start / wave-change toast; CSS animation handles the 4 s auto-hide.
+  function showIntroToast(text) {
     var e = cache();
     var el = e && e.toast;
     if (!el) return;
+    if (typeof text === 'string' && text.length > 0) el.textContent = text;
     el.classList.remove('toast-show');
     void el.offsetWidth;
     el.classList.add('toast-show');

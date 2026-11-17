@@ -62,21 +62,26 @@ y abrir `http://localhost:8820`.
 | `W` `A` `S` `D` | Moverse |
 | Ratón | Mirar (clic en la escena para capturar el puntero) |
 | Clic izquierdo | Disparar (mosquete) o golpear (sable) |
-| Clic derecho | Apuntar (reducce la dispersión y estrecha el campo de visión) |
+| Clic derecho | Apuntar (reduce la dispersión y estrecha el campo de visión) |
 | `R` | Recargar el mosquete |
 | `1` / `2` | Mosquete / sable |
+| `H` | Usar botiquín portátil (+45 HP) o puesto médico |
 | `G` | Llamar a refuerzos (señales) |
 | `Shift` | Correr |
 | `Espacio` | Saltar |
-| `E` | Disparar el cañón del fuerte cuando estás cerca y apuntas a él |
+| `E` | Disparar el cañón del fuerte o usar el puesto médico del patio |
+| `M` | Activar / silenciar la música |
+| `V` | Activar / silenciar la voz del narrador (Maestro Xu) |
 | `Esc` | Pausa (clic para continuar) |
 
 ## Reglas
 
-- La partida tiene **tres fases**, y cada una es un momento real de la batalla: *El desembarco* (23 de febrero de 1841), *El bombardeo* (26 de febrero por la mañana) y *El asalto* (26 de febrero a las 13:20). El objetivo de cada fase aparece en el HUD.
-- Victoria: repeler las tres fases británicas.
+- La partida tiene **10 fases progresivas** ligadas a la cronología de la batalla de Humen (del desembarco el 23 de febrero al combate nocturno y resistencia final del 27 de febrero). El objetivo de cada fase aparece en el HUD.
+- Victoria: repeler las 10 fases británicas.
 - Derrota: tu salud llega a 0, o la integridad del fuerte llega a 0.
 - Cada cañonazo que impacta dentro del fuerte y cada soldado que golpea la muralla dañan la integridad del fuerte; los mosquetes enemigos dañan tu salud.
+- **Puesto médico y botiquines (`H` / `E`)**: dentro del patio hay dos puestos médicos señalizados en verde donde puedes curarte (+65 HP) y reabastecer tus botiquines portátiles (+45 HP).
+- **Banquetas de tiro en la muralla**: sube por las banquetas de madera tras el parapeto norte para disparar cómodamente por encima de las almenas, o agáchate tras el muro para cubrirte mientras recargas.
 - El sable funciona aunque el mosquete esté recargando: úsalo cuando te falte munición.
 - La artillería británica castiga el fuerte aunque no te toque a ti: prioriza a los artilleros.
 - Los cañones del fuerte (los cuatro del patio) están operativos: acércate, apunta y pulsa `E`. Tienen recarga y su explosión limpia grupos enteros.
@@ -104,13 +109,14 @@ Campaña con varias misiones desde 1839 hasta el Tratado de Nankín (1842): bata
 - `js/story/` — datos históricos (`campaign.js`), sets 3D de las cinemáticas (`scenes.js`) y motor de cinemáticas (`cinematics.js`)
 - `js/physics.js` — mundo cannon-es: cuerpos rígidos, colisiones, proyectiles y daño en área
 - `js/effects.js` — humo, chispas, trazadoras, polvo, escombros y sacudida de cámara
-- `js/models.js`, `js/world.js` — modelos low-poly, colliders y escena del fuerte
+- `js/models.js`, `js/world.js` — modelos 3D mejorados, texturas procedurales (mampostería, vetas de madera, pátina de bronce, hierro, dragón Qing), colliders y escena del fuerte
+- `js/dialogues.js`, `js/voice.js` — narración con voz (Maestro Xu vía Web Speech API), toasts históricos y barks de combate
 - `js/player.js`, `js/enemies.js` — controlador FPS y IA de las fases sobre física
 - `js/hud.js`, `js/screens.js`, `js/audio.js` — HUD, pantallas y sonido procedural
 - `vendor/cannon-es.min.js` — motor de física 0.20.0 empaquetado como global local
-- `tests/` — tests de Node (`npm test`)
+- `tests/` — tests de Node (`npm test`, 50 tests sin dependencias externas)
 - `tools/rig-preview.html` — previsualizador del esqueleto y las poses (`?pose=aim&view=three&faction=british&t=0.4`)
-- `docs/HANDOFF-campana-v2.md` — traspaso de la última iteración: qué se hizo, decisiones, validación y pendientes
+- `docs/HANDOFF-campana-v2.md` — traspaso de iteraciones: qué se hizo, decisiones, validación y pendientes
 
 ## Tests
 
@@ -118,7 +124,7 @@ Campaña con varias misiones desde 1839 hasta el Tratado de Nankín (1842): bata
 npm test
 ```
 
-Equivale a `node --test tests/logic.test.js tests/physics.test.js tests/physics-world.test.js tests/enemies.test.js tests/rig.test.js` (43 tests, sin dependencias).
+Equivale a `node --test tests/logic.test.js tests/physics.test.js tests/physics-world.test.js tests/enemies.test.js tests/rig.test.js tests/models.test.js` (53 tests, sin dependencias).
 
 Con `?debug=1` al final de la URL se exponen `window.__game`, `__state`, `__player`, `__physics` y `__enemies` para probar el juego desde la consola.
 

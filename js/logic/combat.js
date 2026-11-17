@@ -3,7 +3,13 @@
 
 var logicConfig = (typeof module !== 'undefined' && module.exports)
   ? require('./config')
-  : { WEAPONS: WEAPONS, WAVES: WAVES, PLAYER_HP: PLAYER_HP, FORT_INTEGRITY: FORT_INTEGRITY };
+  : {
+      WEAPONS: WEAPONS,
+      WAVES: WAVES,
+      PLAYER_HP: PLAYER_HP,
+      FORT_INTEGRITY: FORT_INTEGRITY,
+      MEDKIT: (typeof MEDKIT !== 'undefined' ? MEDKIT : null),
+    };
 
 function startReload(weapon, state) {
   var def = logicConfig.WEAPONS[weapon];
@@ -27,6 +33,29 @@ function applyPlayerDamage(state, amount) {
   return state.playerHp;
 }
 
+function startHeal(state, fromStation) {
+  if (!state || state.phase !== 'playing') return false;
+  if ((state.playerHp || 0) <= 0 || state.playerHp >= logicConfig.PLAYER_HP) return false;
+  var now = state.time || 0;
+  if ((state.healingUntil || 0) > now) return false;
+  if (!fromStation) {
+    if ((state.medkits || 0) <= 0) return false;
+    state.medkits -= 1;
+  }
+  var dur = (logicConfig.MEDKIT && typeof logicConfig.MEDKIT.healDuration === 'number')
+    ? logicConfig.MEDKIT.healDuration
+    : 1.8;
+  state.healingUntil = now + dur;
+  return true;
+}
+
+function applyPlayerHeal(state, amount) {
+  if (!state || (state.playerHp || 0) <= 0) return state ? state.playerHp : 0;
+  var heal = typeof amount === 'number' ? amount : ((logicConfig.MEDKIT && logicConfig.MEDKIT.healAmount) || 45);
+  state.playerHp = Math.min(logicConfig.PLAYER_HP, Math.max(0, state.playerHp + Math.max(0, heal)));
+  return state.playerHp;
+}
+
 function steerTowards(from, to) {
   var fromX = from ? from.x : 0;
   var fromZ = from ? from.z : 0;
@@ -39,4 +68,4 @@ function steerTowards(from, to) {
   return { x: dx / len, z: dz / len };
 }
 
-if (typeof module !== 'undefined') module.exports = { startReload, applyWaveDamage, applyPlayerDamage, steerTowards };
+if (typeof module !== 'undefined') module.exports = { startReload, applyWaveDamage, applyPlayerDamage, startHeal, applyPlayerHeal, steerTowards };

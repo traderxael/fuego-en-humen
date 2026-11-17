@@ -108,11 +108,11 @@ var GamePhysics = (function () {
         mass: 0,
         material: matGround,
         shape: new C.Box(new C.Vec3(d.length / 2, d.height / 2, d.thickness / 2)),
-        position: new C.Vec3(d.x, d.height / 2, d.z),
+        position: new C.Vec3(d.x, d.y != null ? d.y : d.height / 2, d.z),
         collisionFilterGroup: GROUP.WORLD,
         collisionFilterMask: -1,
       });
-      wall.quaternion.setFromEuler(0, d.angle || 0, 0);
+      wall.quaternion.setFromEuler(d.pitch || 0, d.angle || 0, 0);
       cworld.addBody(wall);
     }
 

@@ -125,12 +125,13 @@ var Enemies = (function () {
     var u = enemy.userData;
     var anim = u.animator;
     if (!anim) return;
-    var want = u.aiState === 'shoot' ? 'aim'
+    var want = u.aiState === 'shoot' ? (u.kneelShooter ? 'kneel' : 'aim')
       : u.aiState === 'melee' ? 'melee'
         : 'advance';
     if (want !== u.animState) {
       u.animState = want;
       if (want === 'melee') anim.play(clip('melee'), { fade: 0.12 });
+      else if (want === 'kneel') anim.play(clip('kneel'), { fade: 0.28 });
       else if (want === 'aim') anim.play(clip('aim'), { fade: 0.28 });
       else anim.play(clip('walk'), { fade: 0.28 });
     }
@@ -253,9 +254,10 @@ var Enemies = (function () {
   function attachRigWeapon(rig, visual) {
     if (!rig || !rig.weapon || !visual) return;
     visual.add(rig.weapon);
-    rig.weapon.position.set(-0.3, 0.92, 0.03);
-    rig.weapon.rotation.set(Math.PI / 2, 0, 0);
+    rig.weapon.position.set(0.24, 1.08, -0.05);
+    rig.weapon.rotation.set(0.72, 0, 0);
     rig.weapon.scale.setScalar(1);
+    if (visual.userData) visual.userData.attachedWeapon = rig.weapon;
   }
 
   function attachGlbVisual(pivot, rig, u) {
@@ -297,6 +299,7 @@ var Enemies = (function () {
       rig: rig,
       animator: animator,
       archetype: archetypeName || 'rifleman',
+      kneelShooter: (archetypeName === 'rifleman' || !archetypeName) && Math.random() < 0.5,
       score: arch.score,
       dead: false,
     };
@@ -457,7 +460,9 @@ var Enemies = (function () {
     u.flashT = 0;
 
     if (u.kind === 'soldier') {
-      if (ModelsRef && typeof ModelsRef.stopSoldierAnimation === 'function') {
+      if (ModelsRef && typeof ModelsRef.playSoldierDeath === 'function') {
+        ModelsRef.playSoldierDeath(u.visual);
+      } else if (ModelsRef && typeof ModelsRef.stopSoldierAnimation === 'function') {
         ModelsRef.stopSoldierAnimation(u.visual);
       }
       if (physicsRef && u.entry) physicsRef.ragdoll(u.entry, dir.x, dir.z);
@@ -491,6 +496,13 @@ var Enemies = (function () {
   function updateCorpses(dt) {
     for (var i = corpses.length - 1; i >= 0; i--) {
       var c = corpses[i];
+      if (c.enemy && c.enemy.userData) {
+        if (ModelsRef && typeof ModelsRef.updateSoldierAnimation === 'function' && c.enemy.userData.visual) {
+          ModelsRef.updateSoldierAnimation(c.enemy.userData.visual, dt, 0, 'dead');
+        } else if (c.enemy.userData.animator) {
+          c.enemy.userData.animator.update(dt);
+        }
+      }
       c.timer -= dt;
       if (c.timer > 0) continue;
       var body = c.enemy && c.enemy.userData ? c.enemy.userData.body : null;
@@ -670,6 +682,9 @@ var Enemies = (function () {
               callbacks.onEnemyReachWall(enemy);
             } else if (typeof callbacks.onEnemyDamageFort === 'function') {
               callbacks.onEnemyDamageFort(u.damage || 10);
+            }
+            if (world && Array.isArray(world.ladders)) {
+              for (var ldi = 0; ldi < world.ladders.length; ldi++) world.ladders[ldi].visible = true;
             }
             if (effects && typeof effects.impact === 'function') {
               effects.impact({ x: pos.x, y: 1.0, z: wallZ - 0.7 }, { x: 0, y: 0, z: -1 }, 'wall');

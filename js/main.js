@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const canvas = document.getElementById('game-canvas');
 
   const state = createGameState();
@@ -68,6 +68,15 @@
     effects: effects,
     world: world,
     onEnemyHit: handleEnemyHit,
+    onHealComplete: function () {
+      var bark = (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.bark === 'function')
+        ? DIALOGUES.bark('chen', 'heal')
+        : null;
+      HUD.showRadio('Soldado Chen', bark || 'Venda firme. Sigo en pie.', 4);
+    },
+    onMedkitRestock: function () {
+      HUD.showRadio('Puesto médico', 'Vendas y medicina herbal reabastecidas (×3).', 4);
+    },
   });
 
   // --- Mission flow ------------------------------------------------------
@@ -197,12 +206,34 @@
     } else if (sig.id === 'municion') {
       if (player.refillAmmo) player.refillAmmo();
     } else if (sig.id === 'fuego') {
-      // A reserve gun: a shell lands in the courtyard.
-      if (effects) {
-        effects.explosion({ x: 0, y: 1, z: 12 });
-        effects.addShake(0.4);
+      // Southern reserve battery salvo: 3 real cannonballs targeting the beach assault.
+      var origins = [
+        { x: -10, y: 5.5, z: 32 },
+        { x: 0, y: 5.5, z: 32 },
+        { x: 10, y: 5.5, z: 32 },
+      ];
+      var fallbacks = [
+        { x: -12, y: 0.3, z: -24 },
+        { x: 0, y: 0.3, z: -28 },
+        { x: 12, y: 0.3, z: -24 },
+      ];
+      for (var si = 0; si < origins.length; si++) {
+        var targetPos = fallbacks[si];
+        var candidate = enemies[si];
+        if (candidate && candidate.position && !(candidate.userData && candidate.userData.dead)) {
+          targetPos = { x: candidate.position.x, y: 0.4, z: candidate.position.z };
+        }
+        physics.fireCannon({
+          from: origins[si],
+          target: targetPos,
+          owner: 'player',
+          damage: 165,
+          blastRadius: 8,
+          speed: 62,
+        });
       }
-      sfxCall('explosion');
+      if (effects) effects.addShake(0.45);
+      sfxCall('cannon');
     }
     refreshSignalPrompt();
     return true;
@@ -246,9 +277,12 @@
     setPhase(state, 'playing');
     requestPointerLock();
     if (!enemies.length) Enemies.spawnWave(scene, WAVES[0], enemies, 1);
+    if (world && typeof world.setAtmosphereForWave === 'function') world.setAtmosphereForWave(state.wave);
     triggerBeat('landing');
     playRadio('start');
     refreshSignalPrompt();
+    Screens.showIntroToast(waveToastText(state.wave));
+    narrateWave(state.wave);
   }
 
   // Wave horn: exactly once per wave.
@@ -257,6 +291,53 @@
     if (state.wave === hornWave) return;
     hornWave = state.wave;
     sfxCall('waveHorn');
+  }
+
+  // Dialogues helper: wave toasts come from js/dialogues.js when present,
+  // otherwise fall back to the default text baked in index.html.
+  function waveToastText(w) {
+    try {
+      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.waveToast === 'function') {
+        return DIALOGUES.waveToast(w);
+      }
+    } catch (e) {}
+    return undefined;
+  }
+
+  // Narrator voice (js/voice.js + js/dialogues.js narrator): Maestro Xu.
+  // Best-effort, silent no-op when speechSynthesis is unavailable.
+  function narrate(text) {
+    if (!text) return;
+    try {
+      if (typeof Voice !== 'undefined' && Voice) {
+        if (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.tts) {
+          Voice.speak(text, { narratorTts: DIALOGUES.narrator.tts });
+        } else {
+          Voice.speak(text);
+        }
+      }
+    } catch (e) {}
+  }
+  function narrateWave(w) {
+    try {
+      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateWave === 'function') {
+        narrate(DIALOGUES.narrateWave(w));
+      }
+    } catch (e) {}
+  }
+  function narrateBriefing() {
+    try {
+      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.lines) {
+        narrate(DIALOGUES.narrator.lines.briefing);
+      }
+    } catch (e) {}
+  }
+  function narrateEnd(moment) {
+    try {
+      if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateEnd === 'function') {
+        narrate(DIALOGUES.narrateEnd(moment));
+      }
+    } catch (e) {}
   }
 
   const btnPlay = document.getElementById('btn-play');
@@ -313,14 +394,34 @@
       syncMusicButton();
     });
   }
+
+  const btnVoice = document.getElementById('btn-voice');
+  function syncVoiceButton() {
+    if (!btnVoice) return;
+    var off = false;
+    try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.isEnabled === 'function') off = !Voice.isEnabled(); } catch (e) {}
+    btnVoice.textContent = off ? '🎙️ Voz: Silenciada (V)' : '🎙️ Voz: Maestro Xu (V)';
+    btnVoice.setAttribute('aria-pressed', off ? 'false' : 'true');
+    btnVoice.style.opacity = off ? '0.65' : '1';
+  }
+  if (btnVoice) {
+    btnVoice.addEventListener('click', function (ev) {
+      if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+      try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (e) {}
+      syncVoiceButton();
+    });
+  }
+
   window.addEventListener('keydown', function (e) {
     if (e.code === 'KeyM') { sfxCall('unlock'); sfxCall('toggleMusic'); syncMusicButton(); }
+    if (e.code === 'KeyV') { try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (err) {} syncVoiceButton(); }
     if (e.code === (SCORE_CFG.signalKey || 'KeyG') && state.phase === 'playing') {
       if (useSignal()) e.preventDefault();
     }
   });
   try { state.missionTitle = 'Humen, 1841'; } catch (e) {}
   syncMusicButton();
+  syncVoiceButton();
 
   // A click or a key confirms the end of a cinematic.
   function confirmCinematic() {
@@ -414,6 +515,7 @@
       hidePauseOverlay();
       exitPointerLockSafe();
       sfxCall('victory');
+      narrateEnd('victory');
       // The honest ending: the fort falls on 26 February 1841.
       playCinematic('humen-fall', {
         waitForInput: true,
@@ -431,6 +533,7 @@
       sfxCall('defeat');
       var cause = Screens.detectDefeatCause(state);
       Screens.showDefeat(cause);
+      narrateEnd(cause);
     }
   }
 
@@ -469,7 +572,10 @@
         nextWave(state);
         if (state.phase === 'playing' && state.wave !== prevWave) {
           Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
+          if (world && typeof world.setAtmosphereForWave === 'function') world.setAtmosphereForWave(state.wave);
           playWaveHorn();
+          Screens.showIntroToast(waveToastText(state.wave));
+          narrateWave(state.wave);
           if (state.wave === 2) triggerBeat('artillery');
           if (state.wave === 3) {
             triggerBeat('assault');
@@ -493,11 +599,10 @@
       onPhaseChanged(state.phase);
     }
 
-    // Gentle sea bob so the ships do not feel static (ships only).
-    world.ships.forEach(function (ship, i) {
-      const baseY = ship.userData.baseY !== undefined ? ship.userData.baseY : 0;
-      ship.position.y = baseY + Math.sin(now / 1400 + i * 1.3) * 0.18;
-    });
+    // World dynamic animations: rolling sea waves, rocking ships, waving flags, cannon recoil.
+    if (world && typeof world.update === 'function') {
+      world.update(dt, now / 1000);
+    }
 
     renderer.render(scene, camera);
   }

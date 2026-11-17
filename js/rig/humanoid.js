@@ -307,6 +307,7 @@ var Rig = (function () {
     var gHat = b.group(3);
     var gLeather = b.group(4);
     var gStrap = b.group(5);
+    var gAccent = b.group(6);
 
     var R = 'R', L = 'L';
 
@@ -315,33 +316,35 @@ var Rig = (function () {
     b.prism(gCoat, [0, 0.99, 0], [0, 1.21, 0], [0.152, 0.108], [0.163, 0.112], 8, ['hips', 'spine', 'chest']);
     b.prism(gCoat, [0, 1.21, 0], [0, 1.45, 0], [0.163, 0.112], [0.188, 0.118], 8, ['spine', 'chest', 'neck']);
 
-    // Neck + head
+    // Neck + head + facial structure (brow, nose, ears)
     b.prism(gSkin, [0, 1.43, 0], [0, 1.55, 0], [0.055, 0.055], [0.05, 0.05], 6, ['chest', 'neck', 'head']);
     b.prism(gSkin, [0, 1.52, 0], [0, 1.73, 0], [0.094, 0.1], [0.086, 0.093], 8, ['head', 'neck']);
-    // Face plate keeps the low-poly head from reading as a featureless egg.
-    b.box(gSkin, [0, 1.62, -0.085], [0.1, 0.09, 0.03], ['head']);
+    b.box(gSkin, [0, 1.65, -0.09], [0.11, 0.028, 0.032], ['head']); // brow ridge
+    b.prism(gSkin, [0, 1.59, -0.092], [0, 1.64, -0.086], [0.015, 0.02], [0.011, 0.014], 5, ['head']); // nose
+    b.box(gSkin, [0.09, 1.62, -0.01], [0.022, 0.055, 0.03], ['head']); // right ear
+    b.box(gSkin, [-0.09, 1.62, -0.01], [0.022, 0.055, 0.03], ['head']); // left ear
 
     // Hat
     if (faction === 'qing') {
-      // The classic conical straw hat of the Guangdong garrison.
-      b.cone(gHat, [0, 1.66, 0], [0, 1.92, 0], 0.33, 14, ['head']);
+      // Classic conical bamboo/straw hat (凉帽) with red silk fringe & brass finial
+      b.cone(gHat, [0, 1.66, 0], [0, 1.92, 0], 0.34, 14, ['head']);
+      b.cone(gStrap, [0, 1.76, 0], [0, 1.93, 0], 0.21, 12, ['head']);
+      b.prism(gAccent, [0, 1.91, 0], [0, 1.98, 0], [0.028, 0.028], [0.014, 0.014], 8, ['head']);
       // Queue (braid) behind the hat
-      b.prism(gLeather, [0, 1.66, 0.09], [0, 1.4, 0.11], [0.045, 0.045], [0.03, 0.03], 6, ['head', 'neck']);
+      b.prism(gLeather, [0, 1.66, 0.09], [0, 1.38, 0.11], [0.045, 0.045], [0.025, 0.025], 6, ['head', 'neck']);
     } else {
-      // British shako: tall cylinder + peak
+      // British shako: tall cylinder + brass plate + peak
       b.prism(gHat, [0, 1.68, 0], [0, 1.9, 0], [0.112, 0.112], [0.1, 0.1], 10, ['head']);
       b.prism(gHat, [0, 1.66, 0], [0, 1.69, 0], [0.128, 0.128], [0.128, 0.128], 10, ['head']);
       b.box(gHat, [0, 1.71, -0.12], [0.2, 0.025, 0.1], ['head']);
+      b.box(gAccent, [0, 1.78, -0.112], [0.06, 0.08, 0.02], ['head']);
       if (pal.accent === 0xd8b34a) {
         // Officer's plume on the left side of the shako.
         b.prism(gStrap, [0.1, 1.92, 0.02], [0.09, 2.06, -0.02], [0.035, 0.035], [0.02, 0.02], 6, ['head']);
       }
     }
 
-    // Arms. The shoulder bone is left out of the influence list on purpose:
-    // blending it with the upper arm made the deltoid bulge like a wing when
-    // the arm rotated. A shoulder cap bound to the shoulder bone covers the
-    // joint instead, and the IK keeps that bone still.
+    // Arms + sculpted hands
     var armR = ['upperArm' + R, 'forearm' + R, 'hand' + R];
     var armL = ['upperArm' + L, 'forearm' + L, 'hand' + L];
     b.box(gCoat, [bp.upperArmR.x - 0.03, bp.upperArmR.y + 0.035, bp.upperArmR.z],
@@ -351,42 +354,51 @@ var Rig = (function () {
     b.prism(gCoat, [bp.upperArmR.x, bp.upperArmR.y, bp.upperArmR.z],
       [bp.forearmR.x, bp.forearmR.y, bp.forearmR.z], [0.072, 0.072], [0.052, 0.052], 7, armR);
     b.prism(gSkin, [bp.forearmR.x, bp.forearmR.y, bp.forearmR.z],
-      [bp.handR.x, bp.handR.y, bp.handR.z], [0.05, 0.05], [0.041, 0.041], 7, ['upperArm' + R, 'forearm' + R, 'hand' + R]);
-    b.box(gSkin, [bp.handR.x, bp.handR.y - 0.045, bp.handR.z], [0.075, 0.11, 0.055], ['forearm' + R, 'hand' + R]);
+      [bp.handR.x, bp.handR.y, bp.handR.z], [0.05, 0.05], [0.041, 0.041], 7, armR);
+    b.box(gSkin, [bp.handR.x, bp.handR.y - 0.03, bp.handR.z], [0.072, 0.065, 0.052], ['forearm' + R, 'hand' + R]);
+    b.box(gSkin, [bp.handR.x, bp.handR.y - 0.08, bp.handR.z - 0.01], [0.064, 0.045, 0.042], ['forearm' + R, 'hand' + R]);
+    b.prism(gSkin, [bp.handR.x - 0.032, bp.handR.y - 0.02, bp.handR.z - 0.018],
+      [bp.handR.x - 0.048, bp.handR.y - 0.058, bp.handR.z - 0.032], [0.016, 0.016], [0.012, 0.012], 5, ['forearm' + R, 'hand' + R]);
 
     b.prism(gCoat, [bp.upperArmL.x, bp.upperArmL.y, bp.upperArmL.z],
       [bp.forearmL.x, bp.forearmL.y, bp.forearmL.z], [0.072, 0.072], [0.052, 0.052], 7, armL);
     b.prism(gSkin, [bp.forearmL.x, bp.forearmL.y, bp.forearmL.z],
-      [bp.handL.x, bp.handL.y, bp.handL.z], [0.05, 0.05], [0.041, 0.041], 7, ['upperArm' + L, 'forearm' + L, 'hand' + L]);
-    b.box(gSkin, [bp.handL.x, bp.handL.y - 0.045, bp.handL.z], [0.075, 0.11, 0.055], ['forearm' + L, 'hand' + L]);
+      [bp.handL.x, bp.handL.y, bp.handL.z], [0.05, 0.05], [0.041, 0.041], 7, armL);
+    b.box(gSkin, [bp.handL.x, bp.handL.y - 0.03, bp.handL.z], [0.072, 0.065, 0.052], ['forearm' + L, 'hand' + L]);
+    b.box(gSkin, [bp.handL.x, bp.handL.y - 0.08, bp.handL.z - 0.01], [0.064, 0.045, 0.042], ['forearm' + L, 'hand' + L]);
+    b.prism(gSkin, [bp.handL.x + 0.032, bp.handL.y - 0.02, bp.handL.z - 0.018],
+      [bp.handL.x + 0.048, bp.handL.y - 0.058, bp.handL.z - 0.032], [0.016, 0.016], [0.012, 0.012], 5, ['forearm' + L, 'hand' + L]);
 
-    // Legs
+    // Legs & wrapped lower gaiters for Qing
     b.prism(gPants, [bp.thighR.x, bp.thighR.y, bp.thighR.z],
       [bp.shinR.x, bp.shinR.y, bp.shinR.z], [0.088, 0.088], [0.066, 0.066], 7, ['hips', 'thigh' + R, 'shin' + R]);
-    b.prism(gPants, [bp.shinR.x, bp.shinR.y, bp.shinR.z],
+    b.prism(faction === 'qing' ? gStrap : gPants, [bp.shinR.x, bp.shinR.y, bp.shinR.z],
       [bp.footR.x, bp.footR.y, bp.footR.z], [0.066, 0.066], [0.05, 0.05], 7, ['thigh' + R, 'shin' + R, 'foot' + R]);
     b.box(gLeather, [bp.footR.x, bp.footR.y - 0.035, bp.footR.z - 0.055], [0.105, 0.07, 0.235], ['shin' + R, 'foot' + R]);
 
     b.prism(gPants, [bp.thighL.x, bp.thighL.y, bp.thighL.z],
       [bp.shinL.x, bp.shinL.y, bp.shinL.z], [0.088, 0.088], [0.066, 0.066], 7, ['hips', 'thigh' + L, 'shin' + L]);
-    b.prism(gPants, [bp.shinL.x, bp.shinL.y, bp.shinL.z],
+    b.prism(faction === 'qing' ? gStrap : gPants, [bp.shinL.x, bp.shinL.y, bp.shinL.z],
       [bp.footL.x, bp.footL.y, bp.footL.z], [0.066, 0.066], [0.05, 0.05], 7, ['thigh' + L, 'shin' + L, 'foot' + L]);
     b.box(gLeather, [bp.footL.x, bp.footL.y - 0.035, bp.footL.z - 0.055], [0.105, 0.07, 0.235], ['shin' + L, 'foot' + L]);
 
     // Kit: belt, crossbelt and the cartridge box on the hip.
     b.prism(gLeather, [0, 0.9, 0], [0, 0.985, 0], [0.152, 0.112], [0.152, 0.112], 8, ['hips']);
     if (faction === 'british') {
-      // White crossbelt from the right shoulder to the left hip.
       b.prism(gStrap, [0.1, 1.42, -0.1], [-0.11, 0.92, 0.11], [0.026, 0.012], [0.026, 0.012], 4,
         ['chest', 'spine', 'hips']);
       b.box(gLeather, [-0.15, 0.95, 0.04], [0.07, 0.11, 0.14], ['hips']);
     } else {
-      // Qing: red sash and a Qing-style jacket skirt.
+      // Qing: red sash, Qing-style jacket skirt, chest badge (补子) and shoulder trim
       b.prism(gStrap, [0, 1.0, 0], [0, 1.06, 0], [0.157, 0.115], [0.157, 0.115], 8, ['hips', 'spine']);
       b.prism(gCoat, [0, 0.78, 0], [0, 0.9, 0], [0.155, 0.115], [0.152, 0.112], 8, ['hips']);
+      b.box(gStrap, [0, 1.24, -0.116], [0.14, 0.14, 0.022], ['chest']);
+      b.box(gAccent, [0, 1.24, -0.122], [0.10, 0.10, 0.018], ['chest']);
+      b.box(gAccent, [bp.upperArmR.x - 0.02, bp.upperArmR.y + 0.095, bp.upperArmR.z], [0.16, 0.035, 0.18], ['shoulder' + R]);
+      b.box(gAccent, [bp.upperArmL.x + 0.02, bp.upperArmL.y + 0.095, bp.upperArmL.z], [0.16, 0.035, 0.18], ['shoulder' + L]);
     }
 
-    return [gCoat, gPants, gSkin, gHat, gLeather, gStrap];
+    return [gCoat, gPants, gSkin, gHat, gLeather, gStrap, gAccent];
   }
 
   function buildGeometry(b) {
@@ -404,7 +416,7 @@ var Rig = (function () {
       for (var n = 0; n < g.nor.length; n++) normals.push(g.nor[n]);
       for (var s = 0; s < g.si.length; s++) skinIndices.push(g.si[s]);
       for (var w = 0; w < g.sw.length; w++) skinWeights.push(g.sw[w]);
-      groups.push({ start: offset, count: g.pos.length / 3, materialIndex: i });
+      groups.push({ start: offset, count: g.pos.length / 3, materialIndex: g.mat });
       offset += g.pos.length / 3;
     }
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -420,12 +432,12 @@ var Rig = (function () {
     function m(color, metal) {
       return new THREE.MeshStandardMaterial({
         color: color,
-        roughness: metal ? 0.45 : 0.92,
-        metalness: metal ? 0.6 : 0.0,
+        roughness: metal ? 0.42 : 0.88,
+        metalness: metal ? 0.65 : 0.0,
         flatShading: true,
       });
     }
-    return [m(pal.coat), m(pal.trousers), m(pal.skin), m(pal.hat), m(pal.leather), m(pal.strap)];
+    return [m(pal.coat), m(pal.trousers), m(pal.skin), m(pal.hat), m(pal.leather), m(pal.strap), m(pal.accent, true)];
   }
 
   // The musket is rigid and hangs from the 'weapon' bone, so it follows the
@@ -435,28 +447,63 @@ var Rig = (function () {
     var s = scale || 1;
     function std(color, metal, rough) {
       return new THREE.MeshStandardMaterial({
-        color: color, metalness: metal ? 0.65 : 0.0, roughness: rough || 0.6, flatShading: true,
+        color: color, metalness: metal ? 0.68 : 0.0, roughness: rough || 0.6, flatShading: true,
       });
     }
-    var wood = std(pal.leather, false, 0.85);
-    var iron = std(0x3b3b40, true, 0.4);
-    var barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.014 * s, 0.016 * s, 0.92 * s, 8), iron);
+    var wood = std(pal.leather, false, 0.82);
+    var iron = std(0x3b3b42, true, 0.38);
+    var brass = std(0xc9a84a, true, 0.35);
+
+    var barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.014 * s, 0.017 * s, 0.94 * s, 8), iron);
     barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0, -0.2 * s);
-    var stock = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.085 * s, 0.42 * s), wood);
-    stock.position.set(0, -0.018 * s, 0.2 * s);
+    barrel.position.set(0, 0, -0.21 * s);
+
+    // Three brass barrel bands + muzzle front sight + breech rear sight
+    var bandZs = [-0.04, -0.30, -0.56];
+    for (var bi = 0; bi < bandZs.length; bi++) {
+      var band = new THREE.Mesh(new THREE.CylinderGeometry(0.019 * s, 0.019 * s, 0.025 * s, 8), brass);
+      band.rotation.x = Math.PI / 2;
+      band.position.set(0, -0.004 * s, bandZs[bi] * s);
+      g.add(band);
+    }
+    var frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.005 * s, 0.018 * s, 0.014 * s), brass);
+    frontSight.position.set(0, 0.02 * s, -0.64 * s);
+    var rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.026 * s, 0.012 * s, 0.012 * s), iron);
+    rearSight.position.set(0, 0.019 * s, 0.04 * s);
+
+    var stock = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.085 * s, 0.44 * s), wood);
+    stock.position.set(0, -0.018 * s, 0.19 * s);
+    var foreStock = new THREE.Mesh(new THREE.BoxGeometry(0.036 * s, 0.038 * s, 0.56 * s), wood);
+    foreStock.position.set(0, -0.022 * s, -0.3 * s);
     var butt = new THREE.Mesh(new THREE.BoxGeometry(0.055 * s, 0.115 * s, 0.06 * s), wood);
     butt.position.set(0, -0.03 * s, 0.42 * s);
-    var lock = new THREE.Mesh(new THREE.BoxGeometry(0.03 * s, 0.05 * s, 0.1 * s), iron);
-    lock.position.set(0.028 * s, 0.005 * s, 0.1 * s);
-    var ramrod = new THREE.Mesh(new THREE.CylinderGeometry(0.007 * s, 0.007 * s, 0.5 * s, 6), iron);
+    var buttPlate = new THREE.Mesh(new THREE.BoxGeometry(0.056 * s, 0.116 * s, 0.012 * s), brass);
+    buttPlate.position.set(0, -0.03 * s, 0.452 * s);
+
+    // Detailed flintlock plate, priming pan, frizzen and cock
+    var lock = new THREE.Mesh(new THREE.BoxGeometry(0.014 * s, 0.046 * s, 0.12 * s), iron);
+    lock.position.set(0.028 * s, 0.002 * s, 0.09 * s);
+    var pan = new THREE.Mesh(new THREE.BoxGeometry(0.018 * s, 0.014 * s, 0.03 * s), brass);
+    pan.position.set(0.032 * s, 0.014 * s, 0.06 * s);
+    var hammer = new THREE.Mesh(new THREE.BoxGeometry(0.012 * s, 0.048 * s, 0.022 * s), iron);
+    hammer.position.set(0.035 * s, 0.03 * s, 0.105 * s);
+    hammer.rotation.x = -0.35;
+    var triggerGuard = new THREE.Mesh(new THREE.BoxGeometry(0.014 * s, 0.032 * s, 0.075 * s), brass);
+    triggerGuard.position.set(0, -0.068 * s, 0.16 * s);
+
+    var ramrod = new THREE.Mesh(new THREE.CylinderGeometry(0.007 * s, 0.007 * s, 0.62 * s, 6), iron);
     ramrod.rotation.x = Math.PI / 2;
-    ramrod.position.set(-0.02 * s, -0.045 * s, 0.02 * s);
+    ramrod.position.set(0, -0.045 * s, -0.25 * s);
     var bayonet = new THREE.Mesh(new THREE.ConeGeometry(0.022 * s, 0.2 * s, 6), std(0xd8dde2, true, 0.25));
     bayonet.rotation.x = -Math.PI / 2;
-    bayonet.position.set(0, 0, -0.74 * s);
-    g.add(barrel, stock, butt, lock, ramrod, bayonet);
-    g.userData = { type: 'musket' };
+    bayonet.position.set(0, 0, -0.76 * s);
+
+    g.add(barrel, frontSight, rearSight, stock, foreStock, butt, buttPlate, lock, pan, hammer, triggerGuard, ramrod, bayonet);
+    g.userData = {
+      type: 'musket',
+      ramrod: ramrod,
+      ramrodBasePos: ramrod.position.clone(),
+    };
     return g;
   }
 
@@ -597,36 +644,45 @@ var Rig = (function () {
     ];
   }
 
-  // Arms only: sleeve, forearm and fist.
+  // Arms only: layered Qing sleeves, embroidered cuffs, leather bracers and sculpted hands.
   function buildArms(b, sk, pal) {
     var bp = sk.bindPos;
     var gCoat = b.group(0);
     var gSkin = b.group(2);
     var gLeather = b.group(4);
+    var gStrap = b.group(5);
+    var gAccent = b.group(6);
 
-    b.prism(gCoat, [bp.upperArmR.x, bp.upperArmR.y, bp.upperArmR.z],
-      [bp.forearmR.x, bp.forearmR.y, bp.forearmR.z], [0.07, 0.07], [0.055, 0.055], 8,
-      ['upperArmR', 'forearmR']);
-    b.prism(gSkin, [bp.forearmR.x, bp.forearmR.y, bp.forearmR.z],
-      [bp.handR.x, bp.handR.y, bp.handR.z], [0.052, 0.052], [0.043, 0.043], 8,
-      ['upperArmR', 'forearmR', 'handR']);
-    b.box(gSkin, [bp.handR.x, bp.handR.y - 0.05, bp.handR.z], [0.08, 0.12, 0.06], ['forearmR', 'handR']);
+    function addArm(side) {
+      var u = 'upperArm' + side;
+      var f = 'forearm' + side;
+      var h = 'hand' + side;
+      var sign = side === 'R' ? -1 : 1;
+      var up = bp[u];
+      var fo = bp[f];
+      var ha = bp[h];
 
-    b.prism(gCoat, [bp.upperArmL.x, bp.upperArmL.y, bp.upperArmL.z],
-      [bp.forearmL.x, bp.forearmL.y, bp.forearmL.z], [0.07, 0.07], [0.055, 0.055], 8,
-      ['upperArmL', 'forearmL']);
-    b.prism(gSkin, [bp.forearmL.x, bp.forearmL.y, bp.forearmL.z],
-      [bp.handL.x, bp.handL.y, bp.handL.z], [0.052, 0.052], [0.043, 0.043], 8,
-      ['upperArmL', 'forearmL', 'handL']);
-    b.box(gSkin, [bp.handL.x, bp.handL.y - 0.05, bp.handL.z], [0.08, 0.12, 0.06], ['forearmL', 'handL']);
+      // Upper sleeve
+      b.prism(gCoat, [up.x, up.y, up.z], [fo.x, fo.y, fo.z], [0.072, 0.072], [0.062, 0.062], 8, [u, f]);
+      // Wide Qing horseshoe cuff (马蹄袖) & crimson/gold border
+      b.prism(gCoat, [fo.x, fo.y + 0.02, fo.z], [fo.x, fo.y - 0.11, fo.z], [0.066, 0.066], [0.060, 0.060], 8, [u, f]);
+      b.prism(gStrap, [fo.x, fo.y - 0.09, fo.z], [fo.x, fo.y - 0.125, fo.z], [0.063, 0.063], [0.063, 0.063], 8, [u, f]);
+      b.prism(gAccent, [fo.x, fo.y - 0.122, fo.z], [fo.x, fo.y - 0.135, fo.z], [0.064, 0.064], [0.064, 0.064], 8, [u, f]);
 
-    // Cuffs
-    b.prism(gLeather, [bp.forearmR.x, bp.forearmR.y - 0.03, bp.forearmR.z],
-      [bp.forearmR.x, bp.forearmR.y - 0.11, bp.forearmR.z], [0.056, 0.056], [0.056, 0.056], 8,
-      ['upperArmR', 'forearmR']);
-    b.prism(gLeather, [bp.forearmL.x, bp.forearmL.y - 0.03, bp.forearmL.z],
-      [bp.forearmL.x, bp.forearmL.y - 0.11, bp.forearmL.z], [0.056, 0.056], [0.056, 0.056], 8,
-      ['upperArmL', 'forearmL']);
+      // Protective leather wrist bracer (护腕)
+      b.prism(gLeather, [fo.x, fo.y - 0.135, fo.z], [ha.x, ha.y + 0.04, ha.z], [0.052, 0.052], [0.046, 0.046], 8, [u, f, h]);
+
+      // Skin wrist + sculpted palm + knuckle ridge + fingers + thumb
+      b.prism(gSkin, [ha.x, ha.y + 0.05, ha.z], [ha.x, ha.y, ha.z], [0.044, 0.044], [0.041, 0.038], 8, [u, f, h]);
+      b.box(gSkin, [ha.x, ha.y - 0.032, ha.z], [0.074, 0.068, 0.052], [f, h]);
+      b.box(gSkin, [ha.x, ha.y - 0.068, ha.z - 0.008], [0.070, 0.022, 0.048], [f, h]);
+      b.box(gSkin, [ha.x, ha.y - 0.095, ha.z - 0.015], [0.066, 0.044, 0.040], [f, h]);
+      b.prism(gSkin, [ha.x + sign * 0.034, ha.y - 0.022, ha.z - 0.02],
+        [ha.x + sign * 0.052, ha.y - 0.062, ha.z - 0.036], [0.016, 0.016], [0.012, 0.012], 5, [f, h]);
+    }
+
+    addArm('R');
+    addArm('L');
   }
 
   function buildViewmodel(options) {

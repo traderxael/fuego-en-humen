@@ -7,7 +7,7 @@
 
 var HUD = (function () {
   var els = null;
-  var last = { hp: null, fort: null, wave: null, ammo: null, score: null, mission: null, objective: null, streak: null };
+  var last = { hp: null, fort: null, wave: null, ammo: null, score: null, mission: null, objective: null, streak: null, medkit: null };
   var MAX_HP = (typeof PLAYER_HP !== 'undefined') ? PLAYER_HP : 100;
   var MAX_FORT = (typeof FORT_INTEGRITY !== 'undefined') ? FORT_INTEGRITY : 100;
 
@@ -17,6 +17,7 @@ var HUD = (function () {
       root: document.getElementById('hud'),
       healthBar: document.getElementById('hud-health-bar'),
       healthText: document.getElementById('hud-health'),
+      medkitText: document.getElementById('hud-medkit'),
       fortBar: document.getElementById('hud-fort-bar'),
       fortText: document.getElementById('hud-fort'),
       waveText: document.getElementById('hud-wave'),
@@ -24,6 +25,7 @@ var HUD = (function () {
       hitMarker: document.getElementById('hit-marker'),
       cannonHint: document.getElementById('cannon-hint'),
       damage: document.getElementById('damage-vignette'),
+      healVignette: document.getElementById('heal-vignette'),
       scoreText: document.getElementById('hud-score'),
       streakText: document.getElementById('hud-streak'),
       missionText: document.getElementById('hud-mission'),
@@ -105,6 +107,16 @@ var HUD = (function () {
     if (score !== last.score) { last.score = score; if (e.scoreText) e.scoreText.textContent = 'Puntuación ' + score; }
     var missionName = (typeof state.missionTitle === 'string') ? state.missionTitle : '';
     if (missionName !== last.mission) { last.mission = missionName; if (e.missionText) e.missionText.textContent = missionName; }
+
+    var healing = (state.healingUntil || 0) > (state.time || 0);
+    var medkits = typeof state.medkits === 'number' ? state.medkits : 2;
+    var medKey = healing ? 'healing' : 'med:' + medkits;
+    if (medKey !== last.medkit) {
+      last.medkit = medKey;
+      if (e.medkitText) {
+        e.medkitText.textContent = healing ? 'Vendando herida…' : 'Botiquín [H] ×' + medkits;
+      }
+    }
     try { if (e.hudEl) { var low = hp > 0 && hp / MAX_HP <= 0.3; e.hudEl.classList.toggle('hud-low-hp', low); } } catch (err) {}
   }
 
@@ -136,6 +148,16 @@ var HUD = (function () {
     el.classList.remove('hit-flash');
     void el.offsetWidth;
     el.classList.add('hit-flash');
+  }
+
+  // Green vignette when healing finishes.
+  function flashHeal() {
+    var e = cache();
+    var el = e && e.healVignette;
+    if (!el) return;
+    el.classList.remove('heal-flash');
+    void el.offsetWidth;
+    el.classList.add('heal-flash');
   }
 
   var lastCannonHint = null;
@@ -253,6 +275,7 @@ var HUD = (function () {
     hide: hide,
     flashHit: flashHit,
     flashDamage: flashDamage,
+    flashHeal: flashHeal,
     setCannonHint: setCannonHint,
     setObjective: setObjective,
     setStreak: setStreak,

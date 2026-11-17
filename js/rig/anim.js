@@ -629,6 +629,30 @@ var RigAnim = (function () {
     };
   };
 
+  // Third-person bandaging clip.
+  Clips.heal = function () {
+    return {
+      name: 'heal',
+      duration: 1.8,
+      loop: false,
+      fn: function (t, pose) {
+        var raise = ramp(t, 0.0, 0.3);
+        var back = ramp(t, 1.45, 1.8);
+        var act = raise * (1 - back);
+        setEuler(pose, 'weapon', PORT_X + 0.35 * act, PORT_Y + 0.4 * act, 0);
+        addEuler(pose, 'chest', 0.14 * act, 0, 0);
+        addEuler(pose, 'head', 0.2 * act, 0, 0);
+        setHandMode(pose, 'L', 1 - act);
+        setHandMode(pose, 'R', 1 - act);
+        if (act > 0) {
+          var ang = (t - 0.3) * Math.PI * 3.8;
+          setHand(pose, 'L', -0.08, -0.08, -0.26);
+          setHand(pose, 'R', -0.06 + Math.cos(ang) * 0.06, -0.06 + Math.sin(ang) * 0.05, -0.24);
+        }
+      },
+    };
+  };
+
   // --- First person viewmodel clips ---------------------------------------
   // The viewmodel rig lives in camera space: it is scaled down and offset so
   // the hands sit where the weapon is expected.
@@ -665,31 +689,90 @@ var RigAnim = (function () {
     };
   };
 
+  // 4-stage flintlock reload:
+  //   0.00..0.65: prime pan from cartridge pouch
+  //   0.65..1.25: tilt muzzle upright and pour powder
+  //   1.25..2.15: two visible ramrod plunges down the barrel
+  //   2.15..2.60: settle back into ready posture
   Clips.vmReload = function () {
     return {
       name: 'vmReload',
       duration: 2.6,
       loop: false,
       fn: function (t, pose) {
-        var lower = ramp(t, 0.05, 0.55);
-        var grab = ramp(t, 0.55, 0.95);
-        var raise = ramp(t, 0.95, 1.35);
-        var ram = ramp(t, 1.35, 2.05);
-        var back = ramp(t, 2.05, 2.6);
-        var tilt = lower * (1 - back);
-        var push = ram * (1 - back);
-        vmWeapon(pose, 0.12 + tilt * 0.8, 0.95 + tilt * 0.25, 0.2);
+        var intoPrime = ramp(t, 0.0, 0.3);
+        var intoPour = ramp(t, 0.65, 0.95);
+        var intoRam = ramp(t, 1.25, 1.45);
+        var back = ramp(t, 2.15, 2.6);
+        var active = intoPrime * (1 - back);
 
-        var pouch = ramp(t, 0.45, 0.8) * (1 - ramp(t, 1.25, 1.7));
-        setHandMode(pose, 'R', 1 - pouch);
-        if (pouch > 0) {
+        // Tilt musket upright across the chest for powder + ramrod access
+        var pitch = 0.12 + 0.23 * active + 0.36 * intoPour * (1 - back);
+        var yaw = 0.95 - 0.1 * active - 0.3 * intoPour * (1 - back);
+        var roll = 0.2 + 0.12 * active;
+        vmWeapon(pose, pitch, yaw, roll);
+        offsetPos(pose, 'weapon', -0.05 * intoPour * (1 - back), -0.06 * active, 0.05 * active);
+        addEuler(pose, 'chest', -0.05 * active, 0.04 * active, 0);
+
+        // Right hand animation through pouch -> pan -> muzzle -> 2 ramrod strokes
+        var rFree = ramp(t, 0.15, 0.4) * (1 - ramp(t, 2.15, 2.5));
+        setHandMode(pose, 'R', 1 - rFree);
+        if (rFree > 0) {
           var ik = pose.rig.ik;
-          setHand(pose, 'R', ik.pouch.x, ik.pouch.y - 0.04 * grab, ik.pouch.z);
+          var rx = ik.pouch.x, ry = ik.pouch.y, rz = ik.pouch.z;
+          if (t < 0.65) {
+            var kPrime = ramp(t, 0.3, 0.6);
+            rx = ik.pouch.x + (0.06 - ik.pouch.x) * kPrime;
+            ry = ik.pouch.y + (-0.02 - ik.pouch.y) * kPrime;
+            rz = ik.pouch.z + (-0.18 - ik.pouch.z) * kPrime;
+          } else if (t < 1.25) {
+            var kPour = ramp(t, 0.65, 1.0);
+            rx = 0.06 + (-0.06 - 0.06) * kPour;
+            ry = -0.02 + (0.14 - (-0.02)) * kPour;
+            rz = -0.18 + (-0.36 - (-0.18)) * kPour;
+          } else {
+            var stroke = Math.sin(((t - 1.25) / 0.9) * Math.PI * 2);
+            var plunge = Math.max(0, stroke);
+            rx = -0.06 + 0.02 * plunge;
+            ry = 0.15 - 0.14 * plunge;
+            rz = -0.36 + 0.08 * plunge;
+          }
+          setHand(pose, 'R', rx, ry, rz);
         }
-        setHandMode(pose, 'L', 1 - push * 0.9);
-        if (push > 0) {
+
+        // Left hand stays braced on the fore-stock while ramming
+        if (intoRam > 0 && back < 1) {
           var ik2 = pose.rig.ik;
-          setHand(pose, 'L', ik2.barrel.x, ik2.barrel.y - 0.03, ik2.barrel.z + push * 0.1);
+          var lFree = intoRam * (1 - back) * 0.45;
+          setHandMode(pose, 'L', 1 - lFree);
+          setHand(pose, 'L', ik2.barrel.x - 0.03, ik2.barrel.y - 0.02, ik2.barrel.z + 0.04);
+        }
+      },
+    };
+  };
+
+  // First-person healing animation: lower weapon, bring left forearm up and wrap bandage with right hand.
+  Clips.vmHeal = function () {
+    return {
+      name: 'vmHeal',
+      duration: 1.8,
+      loop: false,
+      fn: function (t, pose) {
+        var raise = ramp(t, 0.0, 0.3);
+        var back = ramp(t, 1.45, 1.8);
+        var act = raise * (1 - back);
+
+        // Lower weapon smoothly out of the way across the chest
+        vmWeapon(pose, 0.12 + 0.45 * act, 0.95 + 0.22 * act, 0.2 + 0.15 * act);
+        offsetPos(pose, 'weapon', 0.02 * act, -0.14 * act, 0.04 * act);
+        addEuler(pose, 'chest', 0.04 * act, 0, 0);
+
+        setHandMode(pose, 'L', 1 - act);
+        setHandMode(pose, 'R', 1 - act);
+        if (act > 0) {
+          var ang = (t - 0.3) * Math.PI * 3.8;
+          setHand(pose, 'L', -0.06, -0.04, -0.32);
+          setHand(pose, 'R', -0.05 + Math.cos(ang) * 0.055, -0.03 + Math.sin(ang) * 0.045, -0.30);
         }
       },
     };

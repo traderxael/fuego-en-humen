@@ -28,7 +28,7 @@ var sfx = (function () {
   function music() {
     if (musicMuted) return bgMusic;
     if (musicStarted) {
-      if (bgMusic && bgMusic.paused) { try { bgMusic.play(); } catch (e) {} }
+      if (bgMusic && bgMusic.paused) { try { bgMusic.play(); } catch (e) { } }
       return bgMusic;
     }
     if (typeof window === 'undefined' || typeof window.Audio !== 'function') return null;
@@ -39,16 +39,16 @@ var sfx = (function () {
       bgMusic.volume = musicMuted ? 0 : MUSIC_LEVEL;
       bgMusic.preload = 'auto';
       var p = bgMusic.play();
-      if (p && typeof p.catch === 'function') p.catch(function () {});
+      if (p && typeof p.catch === 'function') p.catch(function () { });
     } catch (e) {
       bgMusic = null;
     }
     return bgMusic;
   }
-  function stopMusic() { try { if (bgMusic) bgMusic.pause(); } catch (e) {} }
-  function setMusicVolume(v) { try { var n = Number(v); if (!Number.isFinite(n)) return; MUSIC_LEVEL = Math.max(0, Math.min(1, n)); if (bgMusic) bgMusic.volume = musicMuted ? 0 : MUSIC_LEVEL; } catch (e) {} }
+  function stopMusic() { try { if (bgMusic) bgMusic.pause(); } catch (e) { } }
+  function setMusicVolume(v) { try { var n = Number(v); if (!Number.isFinite(n)) return; MUSIC_LEVEL = Math.max(0, Math.min(1, n)); if (bgMusic) bgMusic.volume = musicMuted ? 0 : MUSIC_LEVEL; } catch (e) { } }
   function isMuted() { return !!musicMuted; }
-  function toggleMusic() { musicMuted = !musicMuted; try { if (typeof localStorage !== 'undefined') localStorage.setItem('fuego-music-muted', musicMuted ? '1' : '0'); } catch (e) {} if (!bgMusic) return musicMuted ? null : music(); try { if (musicMuted) bgMusic.pause(); else { bgMusic.volume = MUSIC_LEVEL; bgMusic.play(); } } catch (e) {} return bgMusic; }
+  function toggleMusic() { musicMuted = !musicMuted; try { if (typeof localStorage !== 'undefined') localStorage.setItem('fuego-music-muted', musicMuted ? '1' : '0'); } catch (e) { } if (!bgMusic) return musicMuted ? null : music(); try { if (musicMuted) bgMusic.pause(); else { bgMusic.volume = MUSIC_LEVEL; bgMusic.play(); } } catch (e) { } return bgMusic; }
   function setMuted(v) { var want = v === true; if (want === musicMuted) return; toggleMusic(); }
 
   function audioCtor() {
@@ -142,13 +142,22 @@ var sfx = (function () {
 
   // --- Public API ---
 
-  // Musket: short noise burst + lowpass thump.
+  // Musket: Flintlock strike, explosive black powder boom, deep sub-bass and coastal echoes.
   function shot() {
     var c = ready(); if (!c) return;
     try {
       var t = c.currentTime;
-      playNoise(c, t, { seconds: 0.16, filterType: 'lowpass', freq: 1100, freqEnd: 220, peak: 0.65, attack: 0.004, decay: 0.15, q: 0.6 });
-      playTone(c, t, { type: 'square', freq: 170, freqEnd: 65, glide: 0.12, seconds: 0.13, peak: 0.28, attack: 0.003, decay: 0.12 });
+      // 1. Flint strike click and pan powder flash
+      playNoise(c, t, { seconds: 0.05, filterType: 'bandpass', freq: 2800, peak: 0.35, attack: 0.002, decay: 0.045, q: 2.0 });
+      // 2. Main expanding muzzle blast
+      playNoise(c, t, { seconds: 0.28, filterType: 'lowpass', freq: 1600, freqEnd: 160, peak: 0.85, attack: 0.003, decay: 0.26, q: 0.8 });
+      // 3. Sub-bass chest thump
+      playTone(c, t, { type: 'sine', freq: 62, freqEnd: 24, glide: 0.22, seconds: 0.25, peak: 0.7, attack: 0.003, decay: 0.24 });
+      playTone(c, t, { type: 'square', freq: 140, freqEnd: 42, glide: 0.15, seconds: 0.18, peak: 0.35, attack: 0.003, decay: 0.16 });
+      // 4. Coastal echoes bouncing across Humen bay
+      playNoise(c, t + 0.16, { seconds: 0.24, filterType: 'lowpass', freq: 650, freqEnd: 120, peak: 0.26, attack: 0.02, decay: 0.22 });
+      playNoise(c, t + 0.36, { seconds: 0.35, filterType: 'lowpass', freq: 420, freqEnd: 90, peak: 0.16, attack: 0.03, decay: 0.32 });
+      playTone(c, t + 0.62, { type: 'sine', freq: 45, freqEnd: 20, glide: 0.4, seconds: 0.45, peak: 0.11, attack: 0.04, decay: 0.4 });
     } catch (e) { /* stay silent */ }
   }
 
@@ -157,8 +166,11 @@ var sfx = (function () {
     var c = ready(); if (!c) return;
     try {
       var t = c.currentTime;
-      playNoise(c, t, { seconds: 0.13, filterType: 'lowpass', freq: 750, freqEnd: 180, peak: 0.2, attack: 0.004, decay: 0.12, q: 0.6 });
-      playTone(c, t, { type: 'square', freq: 130, freqEnd: 55, glide: 0.1, seconds: 0.1, peak: 0.09, attack: 0.003, decay: 0.1 });
+      playNoise(c, t, { seconds: 0.16, filterType: 'lowpass', freq: 850, freqEnd: 160, peak: 0.28, attack: 0.004, decay: 0.15, q: 0.6 });
+      playTone(c, t, { type: 'square', freq: 130, freqEnd: 55, glide: 0.12, seconds: 0.12, peak: 0.12, attack: 0.003, decay: 0.12 });
+      playTone(c, t, { type: 'sine', freq: 58, freqEnd: 26, glide: 0.18, seconds: 0.18, peak: 0.25, attack: 0.003, decay: 0.17 });
+      // Soft distant reflection
+      playNoise(c, t + 0.2, { seconds: 0.22, filterType: 'lowpass', freq: 400, freqEnd: 100, peak: 0.08, attack: 0.03, decay: 0.18 });
     } catch (e) { /* stay silent */ }
   }
 
@@ -172,14 +184,28 @@ var sfx = (function () {
     } catch (e) { /* stay silent */ }
   }
 
-  // Reload: two clicks ~120 ms apart.
+  // Reload: paper cartridge tear, priming click, and two ramrod clinks.
   function reload() {
     var c = ready(); if (!c) return;
     try {
       var t = c.currentTime;
-      [0, 0.12].forEach(function (offset, i) {
-        playTone(c, t + offset, { type: 'square', freq: i === 0 ? 1250 : 830, seconds: 0.03, peak: 0.16, attack: 0.002, decay: 0.03 });
+      playNoise(c, t + 0.08, { seconds: 0.14, filterType: 'bandpass', freq: 1800, freqEnd: 900, peak: 0.18, attack: 0.01, decay: 0.12, q: 1.5 });
+      playTone(c, t + 0.35, { type: 'square', freq: 1320, seconds: 0.03, peak: 0.14, attack: 0.002, decay: 0.03 });
+      [1.3, 1.8].forEach(function (offset) {
+        playTone(c, t + offset, { type: 'triangle', freq: 920, freqEnd: 620, glide: 0.05, seconds: 0.06, peak: 0.16, attack: 0.002, decay: 0.05 });
       });
+    } catch (e) { /* stay silent */ }
+  }
+
+  // Heal: soft cloth bandage rustle and warm relief chime.
+  function heal() {
+    var c = ready(); if (!c) return;
+    try {
+      var t = c.currentTime;
+      playNoise(c, t + 0.15, { seconds: 0.45, filterType: 'bandpass', freq: 1400, freqEnd: 800, peak: 0.14, attack: 0.05, decay: 0.4, q: 1.4 });
+      playNoise(c, t + 0.75, { seconds: 0.4, filterType: 'bandpass', freq: 1550, freqEnd: 950, peak: 0.12, attack: 0.04, decay: 0.35, q: 1.4 });
+      playTone(c, t + 1.35, { type: 'sine', freq: 392.0, seconds: 0.25, peak: 0.14, attack: 0.01, decay: 0.24 });
+      playTone(c, t + 1.5, { type: 'sine', freq: 587.33, seconds: 0.35, peak: 0.16, attack: 0.01, decay: 0.34 });
     } catch (e) { /* stay silent */ }
   }
 
@@ -221,14 +247,20 @@ var sfx = (function () {
     } catch (e) { /* stay silent */ }
   }
 
-  // Fort / enemy cannon: deep boom with a long low rumble.
+  // Fort / enemy cannon: deep boom with a long low rumble and coastal echoes.
   function cannon() {
     var c = ready(); if (!c) return;
     try {
       var t = c.currentTime;
-      playNoise(c, t, { seconds: 0.45, filterType: 'lowpass', freq: 420, freqEnd: 70, peak: 0.75, attack: 0.004, decay: 0.4, q: 0.8 });
-      playTone(c, t, { type: 'sine', freq: 68, freqEnd: 26, glide: 0.5, seconds: 0.55, peak: 0.5, attack: 0.006, decay: 0.5 });
-      playTone(c, t, { type: 'square', freq: 120, freqEnd: 45, glide: 0.2, seconds: 0.22, peak: 0.12, attack: 0.004, decay: 0.2 });
+      // 1. Primary detonation
+      playNoise(c, t, { seconds: 0.7, filterType: 'lowpass', freq: 520, freqEnd: 55, peak: 0.95, attack: 0.004, decay: 0.65, q: 0.9 });
+      // 2. Sub-bass seismic boom
+      playTone(c, t, { type: 'sine', freq: 56, freqEnd: 18, glide: 0.75, seconds: 0.8, peak: 0.85, attack: 0.005, decay: 0.75 });
+      playTone(c, t, { type: 'square', freq: 110, freqEnd: 35, glide: 0.35, seconds: 0.38, peak: 0.3, attack: 0.004, decay: 0.35 });
+      // 3. Reverberation rolling across Anunghoy cliffs and the Pearl River
+      playNoise(c, t + 0.22, { seconds: 0.5, filterType: 'lowpass', freq: 350, freqEnd: 60, peak: 0.45, attack: 0.025, decay: 0.45 });
+      playNoise(c, t + 0.52, { seconds: 0.7, filterType: 'lowpass', freq: 240, freqEnd: 45, peak: 0.28, attack: 0.04, decay: 0.65 });
+      playTone(c, t + 0.9, { type: 'sine', freq: 36, freqEnd: 16, glide: 0.7, seconds: 0.75, peak: 0.18, attack: 0.05, decay: 0.7 });
     } catch (e) { /* stay silent */ }
   }
 
@@ -321,6 +353,7 @@ var sfx = (function () {
     enemyShot: enemyShot,
     swish: swish,
     reload: reload,
+    heal: heal,
     hit: hit,
     waveHorn: waveHorn,
     victory: victory,

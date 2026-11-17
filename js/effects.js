@@ -16,8 +16,8 @@
 //   effects.particleCount()
 
 var Effects = (function () {
-  var SOFT_POOL = 150;
-  var GLOW_POOL = 60;
+  var SOFT_POOL = 240;
+  var GLOW_POOL = 100;
 
   function makeGlowTexture() {
     var size = 64;
@@ -164,45 +164,74 @@ var Effects = (function () {
       }
     }
 
-    // --- Muzzle smoke + flash ---
+    // --- Muzzle smoke + flash (Dense historical black powder clouds) ---
     function muzzleFlash(point, dir, opts) {
       if (!point) return;
       var big = opts && opts.big;
       var dx = dir ? dir.x : 0;
       var dy = dir ? dir.y : 0;
       var dz = dir ? dir.z : -1;
+
+      // Incandescent muzzle / touch-hole flash
       glow({
-        x: point.x + dx * 0.08,
-        y: point.y + dy * 0.08,
-        z: point.z + dz * 0.08,
-        life: big ? 0.12 : 0.07,
-        scale: big ? 1.25 : 0.42,
-        grow: big ? 3.2 : 1.4,
-        color: big ? 0xffb35e : 0xffe6a8,
-        opacity: 0.95,
+        x: point.x + dx * 0.1,
+        y: point.y + dy * 0.1,
+        z: point.z + dz * 0.1,
+        life: big ? 0.15 : 0.08,
+        scale: big ? 1.6 : 0.55,
+        grow: big ? 4.5 : 2.0,
+        color: big ? 0xffaa50 : 0xffdf90,
+        opacity: 0.98,
       });
-      var puffs = big ? 7 : 3;
+
+      // Secondary sparks from powder burn
+      var sparkCount = big ? 12 : 5;
+      for (var s = 0; s < sparkCount; s++) {
+        glow({
+          x: point.x + (Math.random() - 0.5) * 0.1,
+          y: point.y + (Math.random() - 0.5) * 0.1,
+          z: point.z + (Math.random() - 0.5) * 0.1,
+          vx: dx * (2.0 + Math.random() * 3.5) + (Math.random() - 0.5) * 1.8,
+          vy: dy * 2.0 + (Math.random() - 0.3) * 1.8,
+          vz: dz * (2.0 + Math.random() * 3.5) + (Math.random() - 0.5) * 1.8,
+          life: 0.15 + Math.random() * 0.22,
+          scale: 0.045 + Math.random() * 0.035,
+          color: 0xffcc44,
+          gravity: 2.5,
+          opacity: 0.9,
+        });
+      }
+
+      // Billowing white-grey black powder smoke cloud
+      var puffs = big ? 16 : 8;
       for (var i = 0; i < puffs; i++) {
+        var forwardSpeed = (big ? 2.8 : 1.6) * (0.6 + Math.random() * 1.0);
+        var lateralSpread = (big ? 1.4 : 0.65) * (Math.random() - 0.5);
+        var vertSpread = (big ? 0.9 : 0.45) * (Math.random() - 0.2);
+
         puff(
-          point.x + (Math.random() - 0.5) * 0.15,
-          point.y + (Math.random() - 0.5) * 0.15,
-          point.z + (Math.random() - 0.5) * 0.15,
-          dx * (1 + Math.random() * 2.2) + (Math.random() - 0.5) * 0.7,
-          dy * (1 + Math.random()) + 0.35 + Math.random() * 0.5,
-          dz * (1 + Math.random() * 2.2) + (Math.random() - 0.5) * 0.7,
+          point.x + (Math.random() - 0.5) * 0.2,
+          point.y + (Math.random() - 0.5) * 0.18,
+          point.z + (Math.random() - 0.5) * 0.2,
+          dx * forwardSpeed + lateralSpread,
+          dy * forwardSpeed + 0.35 + vertSpread,
+          dz * forwardSpeed + lateralSpread,
           {
-            life: 0.8 + Math.random() * 0.9,
-            scale: (big ? 0.55 : 0.16) + Math.random() * (big ? 0.5 : 0.12),
-            grow: (big ? 1.8 : 0.55) + Math.random() * 0.4,
-            color: big ? 0xc9c2b4 : 0xdedad0,
-            opacity: big ? 0.4 : 0.3,
+            life: 2.4 + Math.random() * 1.2, // Lingers 2.4s to 3.6s
+            scale: (big ? 0.65 : 0.22) + Math.random() * (big ? 0.45 : 0.15),
+            grow: (big ? 1.6 : 0.65) + Math.random() * 0.35,
+            gravity: -0.16, // Gentle thermal buoyancy: rises softly
+            drag: 1.8,      // Slows down forward velocity into a lingering bank
+            spin: (Math.random() - 0.5) * 1.2,
+            color: big ? 0xcec8bc : 0xe2ded4,
+            opacity: big ? 0.45 : 0.38,
           }
         );
       }
-      if (big) addShake(0.12);
+      if (big) addShake(0.18);
     }
 
-    // --- Impacts ---
+    // --- Impacts (Sparks, debris and dust) ---
     function impact(point, normal, kind) {
       if (!point) return;
       var nx = normal ? normal.x : 0;
@@ -210,72 +239,95 @@ var Effects = (function () {
       var nz = normal ? normal.z : 0;
       var i;
       if (kind === 'flesh') {
-        for (i = 0; i < 5; i++) {
-          puff(
-            point.x, point.y, point.z,
-            nx * 0.7 + (Math.random() - 0.5) * 1.4,
-            0.3 + Math.random() * 1.1,
-            nz * 0.7 + (Math.random() - 0.5) * 1.4,
-            {
-              life: 0.35 + Math.random() * 0.25,
-              scale: 0.1 + Math.random() * 0.12,
-              grow: 0.35,
-              color: 0x6e1f1a,
-              opacity: 0.5,
-            }
-          );
-        }
-        return;
-      }
-      if (kind === 'water') {
         for (i = 0; i < 6; i++) {
           puff(
-            point.x, Math.max(0.05, point.y), point.z,
-            (Math.random() - 0.5) * 1.8,
-            1.2 + Math.random() * 2.2,
-            (Math.random() - 0.5) * 1.8,
+            point.x, point.y, point.z,
+            nx * 0.8 + (Math.random() - 0.5) * 1.5,
+            0.4 + Math.random() * 1.2,
+            nz * 0.8 + (Math.random() - 0.5) * 1.5,
             {
-              life: 0.5 + Math.random() * 0.4,
-              scale: 0.12 + Math.random() * 0.14,
-              grow: 0.6,
-              gravity: 3.5,
-              color: 0xd8f0ff,
+              life: 0.4 + Math.random() * 0.3,
+              scale: 0.11 + Math.random() * 0.12,
+              grow: 0.38,
+              color: 0x6e1f1a,
               opacity: 0.55,
             }
           );
         }
         return;
       }
-      var color = kind === 'wall' ? 0xcbb187 : 0xb79a6c;
-      for (i = 0; i < 4; i++) {
-        puff(
-          point.x, point.y, point.z,
-          nx * (0.5 + Math.random()) + (Math.random() - 0.5) * 1.2,
-          0.25 + Math.random() * 0.9,
-          nz * (0.5 + Math.random()) + (Math.random() - 0.5) * 1.2,
-          {
-            life: 0.35 + Math.random() * 0.45,
-            scale: 0.08 + Math.random() * 0.12,
-            grow: 0.55,
-            color: color,
-            opacity: 0.5,
-          }
-        );
+      if (kind === 'water') {
+        for (i = 0; i < 8; i++) {
+          puff(
+            point.x, Math.max(0.05, point.y), point.z,
+            (Math.random() - 0.5) * 2.2,
+            1.5 + Math.random() * 2.5,
+            (Math.random() - 0.5) * 2.2,
+            {
+              life: 0.6 + Math.random() * 0.45,
+              scale: 0.14 + Math.random() * 0.16,
+              grow: 0.7,
+              gravity: 4.0,
+              color: 0xd8f0ff,
+              opacity: 0.6,
+            }
+          );
+        }
+        return;
       }
+
+      // Stone wall or cannon iron: bright incandescent sparks and masonry dust
       if (kind === 'wall') {
-        for (i = 0; i < 3; i++) {
+        // Bright ricochet sparks
+        for (i = 0; i < 8; i++) {
           glow({
             x: point.x, y: point.y, z: point.z,
-            vx: nx * 2 + (Math.random() - 0.5) * 3,
-            vy: 0.8 + Math.random() * 2,
-            vz: nz * 2 + (Math.random() - 0.5) * 3,
-            life: 0.18 + Math.random() * 0.2,
-            scale: 0.05,
-            gravity: 5,
-            color: 0xffd58a,
-            opacity: 0.9,
+            vx: nx * 2.5 + (Math.random() - 0.5) * 3.8,
+            vy: ny * 2.0 + Math.random() * 2.5 + 0.5,
+            vz: nz * 2.5 + (Math.random() - 0.5) * 3.8,
+            life: 0.25 + Math.random() * 0.25,
+            scale: 0.055,
+            gravity: 6.5,
+            color: Math.random() > 0.4 ? 0xffcc44 : 0xffea88,
+            opacity: 0.95,
           });
         }
+        // Masonry dust cloud
+        for (i = 0; i < 5; i++) {
+          puff(
+            point.x, point.y, point.z,
+            nx * 1.2 + (Math.random() - 0.5) * 1.5,
+            0.5 + Math.random() * 1.0,
+            nz * 1.2 + (Math.random() - 0.5) * 1.5,
+            {
+              life: 0.8 + Math.random() * 0.6,
+              scale: 0.14 + Math.random() * 0.15,
+              grow: 0.75,
+              color: 0xc4af8b,
+              opacity: 0.55,
+            }
+          );
+        }
+        return;
+      }
+
+      // Ground (beach sand or courtyard dirt)
+      var color = 0xd4ba8c;
+      for (i = 0; i < 6; i++) {
+        puff(
+          point.x, point.y, point.z,
+          nx * 0.8 + (Math.random() - 0.5) * 1.6,
+          0.6 + Math.random() * 1.4,
+          nz * 0.8 + (Math.random() - 0.5) * 1.6,
+          {
+            life: 0.7 + Math.random() * 0.6,
+            scale: 0.15 + Math.random() * 0.16,
+            grow: 0.85,
+            gravity: 0.35,
+            color: color,
+            opacity: 0.55,
+          }
+        );
       }
     }
 

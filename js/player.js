@@ -79,7 +79,9 @@ var createPlayer = (function () {
     var preFallSpeed = 0;
     var lastGrounded = true;
     var aiming = false;      // right mouse: shoulder the musket
+    var aimProgress = 0;     // 0 = hip fire, 1 = centered iron sights
     var sprinting = false;   // running with the musket held low
+    var crosshairEl = typeof document !== 'undefined' ? document.getElementById('crosshair') : null;
     var lastFov = 0;
 
     // --- Weapon state ---
@@ -102,6 +104,24 @@ var createPlayer = (function () {
       if (typeof HUD !== 'undefined' && HUD && typeof HUD.setCannonHint === 'function') {
         HUD.setCannonHint(text);
       }
+    }
+
+    var MEDKIT_CFG = (typeof MEDKIT !== 'undefined')
+      ? MEDKIT
+      : (typeof require !== 'undefined' ? require('./logic/config').MEDKIT : null) || {
+        healAmount: 45, stationHealAmount: 65, healDuration: 1.8,
+        stationCooldown: 12.0, stationRange: 3.4, maxCharges: 3,
+      };
+    var startHealFn = (typeof startHeal !== 'undefined')
+      ? startHeal
+      : (typeof require !== 'undefined' ? require('./logic/combat').startHeal : null);
+    var applyHealFn = (typeof applyPlayerHeal !== 'undefined')
+      ? applyPlayerHeal
+      : (typeof require !== 'undefined' ? require('./logic/combat').applyPlayerHeal : null);
+    var MAX_HP = (typeof PLAYER_HP !== 'undefined') ? PLAYER_HP : 100;
+
+    function isHealing() {
+      return (state.healingUntil || 0) > (state.time || 0);
     }
 
     function isReloading() {
@@ -136,6 +156,7 @@ var createPlayer = (function () {
     var vmAnim = null;
     var vmMusket = null;
     var vmSabre = null;
+    var vmBandage = null;
     var vmState = 'idle';
 
     var RigRef = (typeof Rig !== 'undefined')
@@ -158,28 +179,55 @@ var createPlayer = (function () {
       vmAnim.play(AnimRef.Clips.vmIdle());
       vmMusket = vmRig.weapon;
 
-      // The Qing saber (yanlingdao) rides on the same hand.
+      // Detailed Qing curved saber (Liuyedao / Yanlingdao) on the same hand.
       vmSabre = new THREE.Group();
-      var blade = new THREE.Mesh(
-        new THREE.BoxGeometry(0.03, 0.07, 0.86),
-        new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.22, metalness: 0.9 })
-      );
-      blade.position.set(0, 0.02, -0.38);
-      blade.rotation.x = 0.1;
-      var hilt = new THREE.Mesh(
-        new THREE.BoxGeometry(0.05, 0.13, 0.15),
-        new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.8 })
-      );
-      hilt.position.set(0, -0.01, 0.06);
-      var guard = new THREE.Mesh(
-        new THREE.BoxGeometry(0.11, 0.03, 0.05),
-        new THREE.MeshStandardMaterial({ color: 0x9a9aa2, roughness: 0.4, metalness: 0.7 })
-      );
-      guard.position.set(0, 0.03, -0.02);
-      vmSabre.add(blade, hilt, guard);
+      var steelMat = new THREE.MeshStandardMaterial({ color: 0xdce2e8, roughness: 0.2, metalness: 0.9 });
+      var brassMat = new THREE.MeshStandardMaterial({ color: 0xc9a84a, roughness: 0.35, metalness: 0.78 });
+      var cordMat = new THREE.MeshStandardMaterial({ color: 0x5c3420, roughness: 0.85 });
+      var tasselMat = new THREE.MeshStandardMaterial({ color: 0xb82424, roughness: 0.9 });
+
+      var bladeLower = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.065, 0.44), steelMat);
+      bladeLower.position.set(0, 0.025, -0.22);
+      var bladeUpper = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.058, 0.38), steelMat);
+      bladeUpper.position.set(0, 0.062, -0.59);
+      bladeUpper.rotation.x = 0.14;
+      var bladeTip = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.16, 4), steelMat);
+      bladeTip.position.set(0, 0.105, -0.82);
+      bladeTip.rotation.x = -Math.PI / 2 + 0.18;
+
+      var guard = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.016, 14), brassMat);
+      guard.rotation.x = Math.PI / 2;
+      guard.position.set(0, 0.02, -0.01);
+      var hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.026, 0.16, 8), cordMat);
+      hilt.rotation.x = Math.PI / 2;
+      hilt.position.set(0, 0.01, 0.08);
+      var pommel = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), brassMat);
+      pommel.position.set(0, 0.01, 0.17);
+      var tassel = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 8), tasselMat);
+      tassel.position.set(0, -0.05, 0.19);
+      tassel.rotation.x = 0.25;
+
+      vmSabre.add(bladeLower, bladeUpper, bladeTip, guard, hilt, pommel, tassel);
       vmSabre.position.set(0, 0, 0.02);
       vmSabre.visible = false;
       vmRig.byName.weapon.add(vmSabre);
+
+      // Rolled white linen bandage prop attached to right hand for healing animation.
+      vmBandage = new THREE.Group();
+      var roll = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.042, 0.042, 0.11, 12),
+        new THREE.MeshStandardMaterial({ color: 0xf4f0e8, roughness: 0.9 })
+      );
+      roll.rotation.z = Math.PI / 2;
+      var bandCross = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.044, 0.044, 0.028, 12),
+        new THREE.MeshStandardMaterial({ color: 0xc42824, roughness: 0.7 })
+      );
+      bandCross.rotation.z = Math.PI / 2;
+      vmBandage.add(roll, bandCross);
+      vmBandage.position.set(0, -0.05, -0.04);
+      vmBandage.visible = false;
+      if (vmRig.byName && vmRig.byName.handR) vmRig.byName.handR.add(vmBandage);
     }
 
     var VM_BASE = { x: 0, y: 0, z: 0 };
@@ -187,13 +235,14 @@ var createPlayer = (function () {
     viewmodel.rotation.y = 0.08;
 
     // The viewmodel clip follows the weapon and the situation: idle, aiming,
-    // sprinting, reloading or swinging.
+    // sprinting, reloading, healing or swinging.
     function vmClip(name) {
       if (!AnimRef) return null;
       var C = AnimRef.Clips;
       if (name === 'aim') return C.vmAim();
       if (name === 'sprint') return C.vmSprint();
       if (name === 'reload') return C.vmReload();
+      if (name === 'heal') return C.vmHeal();
       if (name === 'melee') return C.vmMelee();
       return C.vmIdle();
     }
@@ -201,21 +250,28 @@ var createPlayer = (function () {
     function setVmState(next) {
       if (!vmAnim || next === vmState) return;
       vmState = next;
-      if (next === 'reload' || next === 'melee') return; // one shot clips
+      if (next === 'melee') return; // melee plays directly in shoot()
+      if (next === 'reload' || next === 'heal') {
+        vmAnim.play(vmClip(next), { fade: 0.1, restart: true });
+        return;
+      }
       vmAnim.play(vmClip(next), { fade: 0.15 });
     }
 
     function syncViewmodel() {
-      if (vmMusket) vmMusket.visible = currentKey === 'mosquete';
-      if (vmSabre) vmSabre.visible = currentKey === 'sable';
+      var healingNow = isHealing();
+      if (vmMusket) vmMusket.visible = currentKey === 'mosquete' || healingNow;
+      if (vmSabre) vmSabre.visible = currentKey === 'sable' && !healingNow;
+      if (vmBandage) vmBandage.visible = healingNow;
       if (!vmAnim) return;
-      if (currentKey === 'sable') setVmState('idle');
+      if (healingNow) setVmState('heal');
+      else if (currentKey === 'sable') setVmState('idle');
       else if (isReloading()) setVmState('reload');
       else if (aiming) setVmState('aim');
       else setVmState(sprinting ? 'sprint' : 'idle');
     }
 
-    // --- Fort cannons (usable with E) ---
+    // --- Fort cannons (usable with E) & Medical stations (H / E) ---
     var cannons = world && Array.isArray(world.cannons) ? world.cannons : [];
     var cannonSpots = [];
     for (var ci = 0; ci < cannons.length; ci++) {
@@ -225,6 +281,18 @@ var createPlayer = (function () {
       if (!cannons[ci].userData.cooldownUntil) cannons[ci].userData.cooldownUntil = 0;
     }
     var activeCannon = null;
+
+    var medicalStations = world && Array.isArray(world.medicalStations) ? world.medicalStations : [];
+    var medSpots = [];
+    for (var mi = 0; mi < medicalStations.length; mi++) {
+      var mp = new THREE.Vector3();
+      medicalStations[mi].getWorldPosition(mp);
+      medSpots.push(mp);
+      if (!medicalStations[mi].userData.cooldownUntil) medicalStations[mi].userData.cooldownUntil = 0;
+    }
+    var activeMedStation = null;
+    var wasHealing = false;
+    var pendingHealAmount = 0;
 
     function updateCannonChoice(dt) {
       var eye = camera.position;
@@ -260,11 +328,99 @@ var createPlayer = (function () {
         while (delta < -Math.PI) delta += Math.PI * 2;
         var step = Math.max(-3.2 * dt, Math.min(3.2 * dt, delta));
         best.rotation.y += step;
-        var ready = (best.userData.cooldownUntil || 0) <= (state.time || 0);
-        hudHints(ready ? 'E — Fuego de cañón' : 'Cañón recargando…');
-      } else {
-        hudHints(null);
       }
+    }
+
+    function updateMedicalChoice() {
+      var eye = camera.position;
+      var now = state.time || 0;
+      var best = null;
+      var bestDist = MEDKIT_CFG.stationRange || 3.4;
+      for (var i = 0; i < medicalStations.length; i++) {
+        var ms = medicalStations[i];
+        ms.userData.isReady = (ms.userData.cooldownUntil || 0) <= now;
+        var spot = medSpots[i];
+        var dist = Math.hypot(spot.x - eye.x, spot.z - eye.z);
+        if (dist <= bestDist) {
+          best = ms;
+          bestDist = dist;
+        }
+      }
+      activeMedStation = best;
+    }
+
+    function updateInteractHint() {
+      var now = state.time || 0;
+      if (isHealing()) {
+        hudHints('Vendando heridas…');
+        return;
+      }
+      if (activeCannon) {
+        var ready = (activeCannon.userData.cooldownUntil || 0) <= now;
+        hudHints(ready ? 'E — Fuego de cañón' : 'Cañón recargando…');
+        return;
+      }
+      if (activeMedStation) {
+        var stationReady = (activeMedStation.userData.cooldownUntil || 0) <= now;
+        var fullHp = (state.playerHp || 0) >= MAX_HP;
+        var fullBags = (state.medkits || 0) >= (MEDKIT_CFG.maxCharges || 3);
+        if (fullHp && fullBags) {
+          hudHints('Puesto médico — Salud y botiquines al máximo');
+        } else if (stationReady) {
+          hudHints('E / H — Puesto médico (+' + (MEDKIT_CFG.stationHealAmount || 65) + ' HP · Reabastece vendas)');
+        } else {
+          hudHints('Puesto médico reabasteciéndose…');
+        }
+        return;
+      }
+      if ((state.playerHp || MAX_HP) <= 55 && (state.medkits || 0) > 0) {
+        hudHints('H — Usar botiquín (+' + (MEDKIT_CFG.healAmount || 45) + ' HP)');
+        return;
+      }
+      hudHints(null);
+    }
+
+    function useMedkit(allowStation) {
+      if (state.phase !== 'playing' || isHealing()) return false;
+      var now = state.time || 0;
+      var maxCharges = MEDKIT_CFG.maxCharges || 3;
+
+      if (allowStation && activeMedStation && (activeMedStation.userData.cooldownUntil || 0) <= now) {
+        var fullHp = (state.playerHp || 0) >= MAX_HP;
+        if (!fullHp && startHealFn && startHealFn(state, true)) {
+          state.reloadingUntil = 0; // emergency heal cancels unfinished reload
+          activeMedStation.userData.cooldownUntil = now + (MEDKIT_CFG.stationCooldown || 12);
+          activeMedStation.userData.isReady = false;
+          state.medkits = Math.min(maxCharges, (state.medkits || 0) + 1);
+          pendingHealAmount = MEDKIT_CFG.stationHealAmount || 65;
+          wasHealing = true;
+          aiming = false;
+          sfxCall('heal');
+          syncStateAmmo();
+          syncViewmodel();
+          return true;
+        }
+        if (fullHp && (state.medkits || 0) < maxCharges) {
+          state.medkits = maxCharges;
+          activeMedStation.userData.cooldownUntil = now + (MEDKIT_CFG.stationCooldown || 12);
+          activeMedStation.userData.isReady = false;
+          sfxCall('heal');
+          if (typeof hooks.onMedkitRestock === 'function') hooks.onMedkitRestock();
+          return true;
+        }
+      }
+
+      if ((state.playerHp || 0) < MAX_HP && startHealFn && startHealFn(state, false)) {
+        state.reloadingUntil = 0;
+        pendingHealAmount = MEDKIT_CFG.healAmount || 45;
+        wasHealing = true;
+        aiming = false;
+        sfxCall('heal');
+        syncStateAmmo();
+        syncViewmodel();
+        return true;
+      }
+      return false;
     }
 
     function fireCannon() {
@@ -309,6 +465,7 @@ var createPlayer = (function () {
         effects.addShake(0.35);
       }
       sfxCall('cannon');
+      if (typeof activeCannon.userData.triggerRecoil === 'function') activeCannon.userData.triggerRecoil();
       activeCannon.userData.cooldownUntil = now + CANNON_COOLDOWN;
       recoil = 1.2;
       pitchKick += 0.035;
@@ -364,7 +521,8 @@ var createPlayer = (function () {
       if (e.code === 'KeyR') reload();
       else if (e.code === 'Digit1' || e.code === 'Numpad1') switchWeapon(1);
       else if (e.code === 'Digit2' || e.code === 'Numpad2') switchWeapon(2);
-      else if (e.code === 'KeyE') fireCannon();
+      else if (e.code === 'KeyE') { if (!fireCannon()) useMedkit(true); }
+      else if (e.code === 'KeyH') useMedkit(true);
       else if (e.code === 'Space') {
         jumpQueued = true;
         jumpQueuedAt = state.time || 0;
@@ -386,6 +544,7 @@ var createPlayer = (function () {
 
     function canShoot() {
       if (state.phase !== 'playing') return false;
+      if (isHealing()) return false;
       if (typeof document !== 'undefined' && document.pointerLockElement !== domElement) return false;
       return true;
     }
@@ -460,29 +619,37 @@ var createPlayer = (function () {
         });
         if (effects) {
           effects.muzzleFlash(muzzlePoint, forwardVec);
-          effects.addShake(0.05);
+          effects.addShake(aiming ? 0.08 : 0.14);
         }
         if (vmAnim && AnimRef) vmAnim.playAdditive(AnimRef.Clips.vmFire(), 1);
-        recoil = 1;
-        pitchKick += 0.018 + Math.random() * 0.012;
-        yawKick += (Math.random() - 0.5) * 0.01;
+        recoil = 1.15;
+        pitchKick += 0.038 + Math.random() * 0.02;
+        yawKick += (Math.random() - 0.5) * 0.012;
         sfxCall('shot');
       }
 
-      if (def.type !== 'melee' && clips[currentKey] === 0 && startReload(currentKey, state)) sfxCall('reload');
+      if (def.type !== 'melee' && clips[currentKey] === 0 && startReload(currentKey, state)) {
+        sfxCall('reload');
+        if (vmAnim && currentKey === 'mosquete') {
+          vmState = '';
+          setVmState('reload');
+        }
+        if (typeof hooks.onReloadStart === 'function') hooks.onReloadStart();
+      }
       syncStateAmmo();
       return true;
     }
 
     function reload() {
-      if (state.phase !== 'playing') return false;
+      if (state.phase !== 'playing' || isHealing()) return false;
       var started = startReload(currentKey, state);
       if (started) {
         sfxCall('reload');
         if (vmAnim && currentKey === 'mosquete') {
-          vmAnim.play(vmClip('reload'), { fade: 0.08 });
-          vmState = 'reload';
+          vmState = '';
+          setVmState('reload');
         }
+        if (typeof hooks.onReloadStart === 'function') hooks.onReloadStart();
       }
       syncStateAmmo();
       syncViewmodel();
@@ -491,11 +658,13 @@ var createPlayer = (function () {
 
     // A resupply from the fort's magazine (the "munición" signal).
     function refillAmmo() {
-      var def = weaponDef();
-      if (!def || def.type === 'melee') return false;
-      clips[currentKey] = def.clipSize;
+      var mosqueteDef = WEAPONS.mosquete;
+      if (mosqueteDef) clips.mosquete = mosqueteDef.clipSize;
       state.reloadingUntil = 0;
+      var maxCharges = MEDKIT_CFG.maxCharges || 3;
+      state.medkits = Math.min(maxCharges, (state.medkits || 0) + 1);
       syncStateAmmo();
+      syncViewmodel();
       return true;
     }
 
@@ -535,6 +704,39 @@ var createPlayer = (function () {
         }
         state.reloadingUntil = 0;
         syncStateAmmo();
+      }
+
+      // Heal completion.
+      if (wasHealing && !isHealing()) {
+        wasHealing = false;
+        if (applyHealFn && pendingHealAmount > 0) {
+          applyHealFn(state, pendingHealAmount);
+        }
+        pendingHealAmount = 0;
+        state.healingUntil = 0;
+        if (typeof HUD !== 'undefined' && HUD && typeof HUD.flashHeal === 'function') {
+          HUD.flashHeal();
+        }
+        if (typeof hooks.onHealComplete === 'function') hooks.onHealComplete();
+        syncStateAmmo();
+      }
+
+      // Ramrod plunging animation during reload.
+      if (vmMusket && vmMusket.userData && vmMusket.userData.ramrod && vmMusket.userData.ramrodBasePos) {
+        var ramrod = vmMusket.userData.ramrod;
+        var basePos = vmMusket.userData.ramrodBasePos;
+        if (isReloading() && currentKey === 'mosquete' && !isHealing()) {
+          var dur = WEAPONS.mosquete.reloadTime || 2.6;
+          var elapsed = dur - Math.max(0, (state.reloadingUntil || 0) - (state.time || 0));
+          if (elapsed >= 1.25 && elapsed <= 2.2) {
+            var stroke = Math.sin(((elapsed - 1.25) / 0.9) * Math.PI * 2);
+            ramrod.position.set(basePos.x, basePos.y + 0.055, basePos.z - 0.52 + Math.max(0, stroke) * 0.25);
+          } else {
+            ramrod.position.copy(basePos);
+          }
+        } else {
+          ramrod.position.copy(basePos);
+        }
       }
 
       preGrounded = physics.isGrounded();
@@ -603,27 +805,54 @@ var createPlayer = (function () {
       if (Math.abs(yawKick) < 1e-5) yawKick = 0;
 
       updateCannonChoice(dt);
+      updateMedicalChoice();
+      updateInteractHint();
 
-      // Viewmodel bob + recoil + sable swing.
-      var bobY = Math.sin(bobPhase * 2) * 0.014 * bobBlend;
-      var bobX = Math.cos(bobPhase) * 0.010 * bobBlend;
+      var targetAim = (aiming && currentKey === 'mosquete' && !isReloading() && !isHealing()) ? 1 : 0;
+      aimProgress += (targetAim - aimProgress) * Math.min(1, dt * 12);
+
+      // Smooth continuous FOV zoom during ADS
+      var targetFov = targetAim ? 50 : 75;
+      var fovDiff = targetFov - camera.fov;
+      if (Math.abs(fovDiff) > 0.05) {
+        camera.fov += fovDiff * Math.min(1, dt * 11);
+        camera.updateProjectionMatrix();
+      }
+
+      // Hide HUD crosshair when iron sights are brought up
+      if (crosshairEl) {
+        if (aimProgress > 0.62) {
+          crosshairEl.classList.add('crosshair-hidden');
+        } else {
+          crosshairEl.classList.remove('crosshair-hidden');
+        }
+      }
+
+      // Viewmodel bob + recoil + ADS centering + sable swing.
+      var bobBlendCurrent = bobBlend * (1 - aimProgress * 0.88);
+      var bobY = Math.sin(bobPhase * 2) * 0.014 * bobBlendCurrent;
+      var bobX = Math.cos(bobPhase) * 0.010 * bobBlendCurrent;
+
+      var hipX = VM_BASE.x + bobX;
+      var hipY = VM_BASE.y + bobY;
+      var hipZ = VM_BASE.z + recoil * 0.18;
+
+      // Iron sights alignment target in camera space
+      var adsX = -0.016;
+      var adsY = -0.012;
+      var adsZ = 0.045 + recoil * 0.12;
+
       viewmodel.position.set(
-        VM_BASE.x + bobX,
-        VM_BASE.y + bobY,
-        VM_BASE.z + recoil * 0.18
+        hipX * (1 - aimProgress) + adsX * aimProgress,
+        hipY * (1 - aimProgress) + adsY * aimProgress,
+        hipZ * (1 - aimProgress) + adsZ * aimProgress
       );
+      viewmodel.rotation.y = 0.08 * (1 - aimProgress) - 0.005 * aimProgress;
       viewmodel.rotation.x = recoil * 0.22;
       viewmodel.rotation.z = meleeSwing > 0
         ? Math.sin((0.32 - meleeSwing) / 0.32 * Math.PI) * 0.5
         : 0;
 
-      // Shouldering the musket narrows the view; the first person arms follow.
-      var targetFov = aiming ? 52 : 75;
-      if (targetFov !== lastFov) {
-        camera.fov = targetFov;
-        camera.updateProjectionMatrix();
-        lastFov = targetFov;
-      }
       syncViewmodel();
       if (vmAnim) vmAnim.update(dt);
 
@@ -665,6 +894,7 @@ var createPlayer = (function () {
       syncCamera: syncCamera,
       shoot: shoot,
       reload: reload,
+      useMedkit: useMedkit,
       switchWeapon: switchWeapon,
       fireCannon: fireCannon,
       addShake: addShake,
@@ -677,8 +907,10 @@ var createPlayer = (function () {
       viewmodelAnim: vmAnim,
       viewmodelRig: vmRig,
       isReloading: isReloading,
+      isHealing: isHealing,
       refillAmmo: refillAmmo,
       isAiming: function () { return aiming; },
+      getAimProgress: function () { return aimProgress; },
       isGrounded: function () { return lastGrounded; },
       getActiveCannon: function () { return activeCannon; },
     };
