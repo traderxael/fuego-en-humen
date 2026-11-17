@@ -19,13 +19,13 @@ global.PhysicsLogic = require('../js/logic/physics');
 
 const GamePhysics = require('../js/physics');
 
-function setup(colliders) {
+function setup(colliders, effects = null) {
   const scene = new THREE.Scene();
   const world = {
     colliders: colliders || [],
     fort: { position: { x: 0, y: 0, z: 20 } },
   };
-  const physics = GamePhysics.create(scene, world, null);
+  const physics = GamePhysics.create(scene, world, effects);
   return { scene, world, physics };
 }
 
@@ -183,4 +183,75 @@ test('a player cannonball damages enemies inside the blast radius', () => {
   assert.ok(biggest >= 100, 'close soldier takes most of the blast, got ' + biggest);
   assert.strictEqual(rec.calls.enemy[0].kind, 'cannon');
   assert.strictEqual(a.pivot, rec.calls.enemy[0].enemy);
+});
+
+test('el trabuco crea ocho proyectiles shotgun dentro del cono', (t) => {
+  const { physics } = setup();
+  // Boundary samples make a square spread fail reliably instead of intermittently.
+  const samples = [0, 0, 0, 0.5, 0, 0.999999, 0.5, 0,
+    0.5, 0.999999, 0.999999, 0, 0.999999, 0.5, 0.999999, 0.999999];
+  let sample = 0;
+  t.mock.method(Math, 'random', () => samples[sample++ % samples.length]);
+  const shots = physics.fireShotgun({
+    from: { x: 0, y: 1.7, z: 0 },
+    dir: { x: 0, y: 0, z: -1 },
+    spread: 0.07,
+    damage: 22,
+    pellets: 8,
+    owner: 'player',
+  });
+  assert.strictEqual(shots.length, 8);
+  for (const shot of shots) {
+    assert.strictEqual(shot.kind, 'shotgun');
+    assert.strictEqual(shot.damage, 22);
+    const len = Math.hypot(shot.vel.x, shot.vel.y, shot.vel.z);
+    assert.ok(len > 0);
+    const angle = Math.acos(Math.max(-1, Math.min(1, -shot.vel.z / len)));
+    assert.ok(angle <= 0.07 + 1e-9, `perdigón fuera del cono: ${angle} rad`);
+  }
+});
+
+test('shotgun no crea trails y musket crea exactamente uno', (t) => {
+  const trail = { update() {}, dispose() {} };
+  const effects = { trail: t.mock.fn(() => trail) };
+  const { physics } = setup([], effects);
+  const opts = {
+    from: { x: 0, y: 1.7, z: 0 },
+    dir: { x: 0, y: 0, z: -1 },
+    spread: 0.07,
+    damage: 22,
+    pellets: 8,
+    owner: 'player',
+  };
+  const shots = physics.fireShotgun(opts);
+  assert.strictEqual(shots.length, 8);
+  assert.strictEqual(effects.trail.mock.callCount(), 0);
+  for (const shot of shots) assert.strictEqual(shot.trail, null);
+
+  const musket = physics.fireMusket(opts);
+  assert.strictEqual(effects.trail.mock.callCount(), 1);
+  assert.deepStrictEqual(effects.trail.mock.calls[0].arguments, [opts.from, 'musket']);
+  assert.strictEqual(musket.trail, trail);
+});
+
+test('shotgun con spread cero conserva kind y 22 de daño al impactar', () => {
+  const { physics } = setup();
+  const { pivot } = makeEnemy(physics, 0, 0);
+  const rec = recorder();
+  physics.fireShotgun({
+    from: { x: 0, y: 1.4, z: 10 },
+    dir: { x: 0, y: 0, z: -1 },
+    spread: 0,
+    damage: 22,
+    pellets: 8,
+    owner: 'player',
+  });
+  run(physics, 0.4, rec.ctx);
+  assert.strictEqual(rec.calls.enemy.length, 8);
+  for (const hit of rec.calls.enemy) {
+    assert.strictEqual(hit.enemy, pivot);
+    assert.strictEqual(hit.kind, 'shotgun');
+    assert.strictEqual(hit.damage, 22);
+  }
+  assert.strictEqual(physics.getStats().projectiles, 0);
 });

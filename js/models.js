@@ -1,501 +1,76 @@
-// Low-poly & enhanced model builders using THREE primitives and procedural textures.
-// Browser global script exposing `Models`; guarded for Node tooling and test suites.
+// Low-poly model builders using THREE primitives only (no external assets).
+// Browser global script exposing `Models`; optional Node guard for tooling.
 
 var Models = (function () {
   var britishTemplate = null;
   var britishClips = null;
 
-  // Cached materials and procedural textures (created lazily in browser).
-  var textures = {};
-  var materials = {};
-
-  function isBrowser() {
-    return typeof document !== 'undefined' && typeof window !== 'undefined';
+  function mat(color) {
+    return new THREE.MeshStandardMaterial({ color: color, roughness: 0.9, metalness: 0.0 });
   }
 
-  function getProceduralTexture(key, width, height, drawFn, repX, repY) {
-    if (!isBrowser()) return null;
-    if (textures[key]) return textures[key];
-    try {
-      var canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      var ctx = canvas.getContext('2d');
-      drawFn(ctx, width, height);
-      var tex = new THREE.CanvasTexture(canvas);
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(repX || 1, repY || 1);
-      textures[key] = tex;
-      return tex;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // 1. Stone wall masonry texture: warm granite / adobe with mortar joints & weathering.
-  function getStoneWallMaterial(repX, repY) {
-    var key = 'stone_' + (repX || 1) + '_' + (repY || 1);
-    if (materials[key]) return materials[key];
-
-    var tex = getProceduralTexture('stone_tex', 512, 512, function (ctx, w, h) {
-      // Base sandstone tone
-      ctx.fillStyle = '#bda072';
-      ctx.fillRect(0, 0, w, h);
-
-      // Noise grain
-      var imgData = ctx.getImageData(0, 0, w, h);
-      var d = imgData.data;
-      for (var p = 0; p < d.length; p += 4) {
-        var n = (Math.random() - 0.5) * 28;
-        d[p] = Math.min(255, Math.max(0, d[p] + n));
-        d[p + 1] = Math.min(255, Math.max(0, d[p + 1] + n));
-        d[p + 2] = Math.min(255, Math.max(0, d[p + 2] + n));
-      }
-      ctx.putImageData(imgData, 0, 0);
-
-      // Masonry stone blocks in staggered courses
-      var rows = 8;
-      var rowH = h / rows;
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = '#5a4631';
-
-      for (var r = 0; r <= rows; r++) {
-        var y = r * rowH;
-        // Horizontal mortar lines
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-
-        if (r < rows) {
-          var cols = 5;
-          var colW = w / cols;
-          var offset = (r % 2) * (colW * 0.5);
-          for (var c = -1; c <= cols + 1; c++) {
-            var x = c * colW + offset;
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(x, y + rowH);
-            ctx.stroke();
-
-            // Subtle shade inside random blocks
-            if ((r + c) % 3 === 0) {
-              ctx.fillStyle = 'rgba(70, 50, 30, 0.08)';
-              ctx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
-            } else if ((r + c) % 4 === 0) {
-              ctx.fillStyle = 'rgba(255, 240, 200, 0.08)';
-              ctx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
-            }
-          }
-        }
-      }
-
-      // Weathering gradient at bottom
-      var grad = ctx.createLinearGradient(0, h * 0.6, 0, h);
-      grad.addColorStop(0, 'rgba(60, 45, 25, 0)');
-      grad.addColorStop(1, 'rgba(50, 40, 20, 0.35)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, h * 0.6, w, h * 0.4);
-    }, repX, repY);
-
-    var m = new THREE.MeshStandardMaterial({
-      color: 0xc4a170,
-      map: tex || null,
-      roughness: 0.9,
-      metalness: 0.05,
-    });
-    materials[key] = m;
+  function box(w, h, d, color, x, y, z) {
+    var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
+    m.position.set(x || 0, y || 0, z || 0);
+    m.castShadow = true;
+    m.receiveShadow = true;
     return m;
   }
 
-  // 2. Wood material: oak / teak with longitudinal grain and plank seams.
-  function getWoodMaterial(dark, repX, repY) {
-    var key = (dark ? 'wood_dark_' : 'wood_') + (repX || 1) + '_' + (repY || 1);
-    if (materials[key]) return materials[key];
-
-    var baseColor = dark ? '#432918' : '#6f4e37';
-    var tex = getProceduralTexture(key + '_tex', 256, 256, function (ctx, w, h) {
-      ctx.fillStyle = baseColor;
-      ctx.fillRect(0, 0, w, h);
-
-      // Fine grain streaks
-      ctx.fillStyle = dark ? 'rgba(25, 14, 8, 0.4)' : 'rgba(40, 24, 14, 0.35)';
-      for (var i = 0; i < 40; i++) {
-        var x = Math.random() * w;
-        var width = 1 + Math.random() * 2.5;
-        ctx.fillRect(x, 0, width, h);
-      }
-
-      // Plank separation seams
-      ctx.strokeStyle = dark ? '#201209' : '#331d10';
-      ctx.lineWidth = 3;
-      var planks = 6;
-      for (var p = 0; p <= planks; p++) {
-        var px = p * (w / planks);
-        ctx.beginPath();
-        ctx.moveTo(px, 0);
-        ctx.lineTo(px, h);
-        ctx.stroke();
-
-        // Nail dots
-        ctx.fillStyle = '#1c1c1c';
-        for (var ny = 20; ny < h; ny += 60) {
-          ctx.beginPath();
-          ctx.arc(px + 6, ny, 2, 0, Math.PI * 2);
-          ctx.arc(px + (w / planks) - 6, ny, 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }, repX, repY);
-
-    var m = new THREE.MeshStandardMaterial({
-      color: dark ? 0x4a3220 : 0x735034,
-      map: tex || null,
-      roughness: 0.78,
-      metalness: 0.04,
-    });
-    materials[key] = m;
-    return m;
-  }
-
-  // 3. Antique bronze patina material for Chinese imperial cannons.
-  function getBronzeMaterial() {
-    if (materials.bronze) return materials.bronze;
-    var tex = getProceduralTexture('bronze_tex', 256, 256, function (ctx, w, h) {
-      // Warm aged bronze base
-      ctx.fillStyle = '#7a6039';
-      ctx.fillRect(0, 0, w, h);
-
-      // Verdigris oxidation in streaks
-      ctx.fillStyle = 'rgba(54, 98, 80, 0.32)';
-      for (var i = 0; i < 24; i++) {
-        var y = Math.random() * h;
-        var ht = 8 + Math.random() * 22;
-        ctx.fillRect(0, y, w, ht);
-      }
-      // Stippling
-      for (var s = 0; s < 120; s++) {
-        ctx.fillStyle = 'rgba(78, 136, 110, 0.4)';
-        ctx.beginPath();
-        ctx.arc(Math.random() * w, Math.random() * h, 1.5 + Math.random() * 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
-
-    var m = new THREE.MeshStandardMaterial({
-      color: 0x8b6c3e,
-      map: tex || null,
-      roughness: 0.42,
-      metalness: 0.75,
-    });
-    materials.bronze = m;
-    return m;
-  }
-
-  // 4. Forged cast-iron material.
-  function getIronMaterial() {
-    if (materials.iron) return materials.iron;
-    var m = new THREE.MeshStandardMaterial({
-      color: 0x272729,
-      roughness: 0.48,
-      metalness: 0.82,
-    });
-    materials.iron = m;
-    return m;
-  }
-
-  // 5. Imperial Qing Yellow Dragon Banner (黄龙旗) texture.
-  function getQingFlagTexture() {
-    return getProceduralTexture('qing_flag', 512, 320, function (ctx, w, h) {
-      // Imperial golden yellow background
-      ctx.fillStyle = '#f39c12';
-      ctx.fillRect(0, 0, w, h);
-
-      // Flame border (triangular jagged teeth in crimson along top, bottom and right edges)
-      ctx.fillStyle = '#c0392b';
-      var toothSize = 24;
-      // Top border
-      for (var x = 0; x < w; x += toothSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x + toothSize * 0.5, toothSize);
-        ctx.lineTo(x + toothSize, 0);
-        ctx.fill();
-      }
-      // Bottom border
-      for (var bx = 0; bx < w; bx += toothSize) {
-        ctx.beginPath();
-        ctx.moveTo(bx, h);
-        ctx.lineTo(bx + toothSize * 0.5, h - toothSize);
-        ctx.lineTo(bx + toothSize, h);
-        ctx.fill();
-      }
-      // Right border
-      for (var ry = 0; ry < h; ry += toothSize) {
-        ctx.beginPath();
-        ctx.moveTo(w, ry);
-        ctx.lineTo(w - toothSize, ry + toothSize * 0.5);
-        ctx.lineTo(w, ry + toothSize);
-        ctx.fill();
-      }
-
-      // Azure dragon body (coiling Chinese serpentine dragon)
-      ctx.strokeStyle = '#1b3f73';
-      ctx.lineWidth = 18;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.beginPath();
-      ctx.moveTo(110, 180);
-      ctx.bezierCurveTo(160, 80, 260, 90, 310, 150);
-      ctx.bezierCurveTo(360, 210, 270, 260, 200, 220);
-      ctx.bezierCurveTo(140, 180, 170, 120, 230, 130);
-      ctx.stroke();
-
-      // Dragon spine scales
-      ctx.fillStyle = '#e67e22';
-      for (var s = 0; s < 12; s++) {
-        var sx = 140 + s * 16;
-        var sy = 135 + Math.sin(s * 0.8) * 40;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Dragon head
-      ctx.fillStyle = '#1b3f73';
-      ctx.beginPath();
-      ctx.ellipse(330, 140, 24, 18, 0.3, 0, Math.PI * 2);
-      ctx.fill();
-      // Antlers / horns
-      ctx.strokeStyle = '#f1c40f';
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(330, 125);
-      ctx.lineTo(345, 95);
-      ctx.moveTo(320, 126);
-      ctx.lineTo(315, 100);
-      ctx.stroke();
-      // White eye & fangs
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(336, 134, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#000000';
-      ctx.beginPath();
-      ctx.arc(337, 134, 2, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Flaming Pearl of Wisdom (宝珠)
-      ctx.fillStyle = '#e74c3c';
-      ctx.beginPath();
-      ctx.arc(390, 135, 16, 0, Math.PI * 2);
-      ctx.fill();
-      // Flames around pearl
-      ctx.fillStyle = '#f1c40f';
-      for (var f = 0; f < 5; f++) {
-        var fa = (f / 5) * Math.PI * 2;
-        var fx = 390 + Math.cos(fa) * 22;
-        var fy = 135 + Math.sin(fa) * 22;
-        ctx.beginPath();
-        ctx.arc(fx, fy, 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
-  }
-
-  // 6. Sandbag burlap weave material.
-  function getSandbagMaterial() {
-    if (materials.sandbag) return materials.sandbag;
-    var tex = getProceduralTexture('sandbag_tex', 256, 256, function (ctx, w, h) {
-      ctx.fillStyle = '#b79769';
-      ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(70, 50, 30, 0.25)';
-      for (var y = 0; y < h; y += 4) {
-        ctx.fillRect(0, y, w, 1);
-      }
-      for (var x = 0; x < w; x += 4) {
-        ctx.fillRect(x, 0, 1, h);
-      }
-      ctx.strokeStyle = '#4e3820';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(4, 4, w - 8, h - 8);
-    });
-    var m = new THREE.MeshStandardMaterial({
-      color: 0xb5976b,
-      map: tex || null,
-      roughness: 0.95,
-      metalness: 0.02,
-    });
-    materials.sandbag = m;
-    return m;
-  }
-
-  function mat(color, roughness, metalness) {
-    return new THREE.MeshStandardMaterial({
-      color: color,
-      roughness: typeof roughness === 'number' ? roughness : 0.9,
-      metalness: typeof metalness === 'number' ? metalness : 0.0,
-    });
-  }
-
-  function box(w, h, d, colorOrMat, x, y, z) {
-    var m = typeof colorOrMat === 'object' && colorOrMat.isMaterial
-      ? colorOrMat
-      : mat(colorOrMat);
-    var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-    mesh.position.set(x || 0, y || 0, z || 0);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    return mesh;
-  }
-
-  function cyl(rTop, rBottom, h, colorOrMat, x, y, z, segments) {
-    var m = typeof colorOrMat === 'object' && colorOrMat.isMaterial
-      ? colorOrMat
-      : mat(colorOrMat);
-    var mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(rTop, rBottom, h, segments || 12),
-      m
+  function cyl(rTop, rBottom, h, color, x, y, z, segments) {
+    var m = new THREE.Mesh(
+      new THREE.CylinderGeometry(rTop, rBottom, h, segments || 10),
+      mat(color)
     );
-    mesh.position.set(x || 0, y || 0, z || 0);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    return mesh;
+    m.position.set(x || 0, y || 0, z || 0);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    return m;
   }
 
-  function sphere(r, colorOrMat, x, y, z) {
-    var m = typeof colorOrMat === 'object' && colorOrMat.isMaterial
-      ? colorOrMat
-      : mat(colorOrMat);
-    var mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), m);
-    mesh.position.set(x || 0, y || 0, z || 0);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    return mesh;
+  function sphere(r, color, x, y, z) {
+    var m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), mat(color));
+    m.position.set(x || 0, y || 0, z || 0);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    return m;
   }
 
-  function cone(r, h, colorOrMat, x, y, z, segments) {
-    var m = typeof colorOrMat === 'object' && colorOrMat.isMaterial
-      ? colorOrMat
-      : mat(colorOrMat);
-    var mesh = new THREE.Mesh(new THREE.ConeGeometry(r, h, segments || 14), m);
-    mesh.position.set(x || 0, y || 0, z || 0);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    return mesh;
+  function cone(r, h, color, x, y, z) {
+    var m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 12), mat(color));
+    m.position.set(x || 0, y || 0, z || 0);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    return m;
   }
 
-  // --- Upgraded Musket Model ---
   function makeMusket() {
     var g = new THREE.Group();
-    var ironMat = getIronMaterial();
-    var woodMat = getWoodMaterial(true);
-    var brassMat = mat(0xc9a84a, 0.45, 0.65);
-
-    // Long barrel
-    var barrel = cyl(0.024, 0.028, 1.55, ironMat, 0, 0, -0.28, 10);
+    var barrel = cyl(0.03, 0.03, 1.5, 0x4a3421, 0, 0, -0.25, 8);
     barrel.rotation.x = Math.PI / 2;
+    var stock = box(0.07, 0.12, 0.5, 0x6b4a2f, 0, -0.02, 0.45);
     g.add(barrel);
-
-    // Muzzle ring
-    var muzzleBand = cyl(0.03, 0.03, 0.04, brassMat, 0, 0, -1.04, 10);
-    muzzleBand.rotation.x = Math.PI / 2;
-    g.add(muzzleBand);
-
-    // Middle barrel band
-    var midBand = cyl(0.032, 0.032, 0.03, brassMat, 0, 0, -0.45, 10);
-    midBand.rotation.x = Math.PI / 2;
-    g.add(midBand);
-
-    // Wooden stock with cheek comb
-    var stock = box(0.065, 0.11, 0.52, woodMat, 0, -0.02, 0.46);
     g.add(stock);
-
-    // Fore-end wooden stock under barrel
-    var foreStock = box(0.05, 0.045, 0.9, woodMat, 0, -0.02, -0.22);
-    g.add(foreStock);
-
-    // Ramrod (baqueta de hierro bajo el cañón)
-    var ramrod = cyl(0.008, 0.008, 1.35, ironMat, 0, -0.045, -0.32, 6);
-    ramrod.rotation.x = Math.PI / 2;
-    g.add(ramrod);
-
-    // Flintlock / lockplate assembly on right side
-    var lockPlate = box(0.015, 0.045, 0.12, ironMat, 0.036, 0.01, 0.15);
-    g.add(lockPlate);
-    var hammer = box(0.012, 0.055, 0.02, ironMat, 0.038, 0.045, 0.12);
-    hammer.rotation.x = -0.3;
-    g.add(hammer);
-
-    // Brass trigger guard
-    var guard = box(0.018, 0.035, 0.08, brassMat, 0, -0.07, 0.28);
-    g.add(guard);
-
     g.position.set(0.25, 1.25, 0.05);
     g.rotation.x = -0.15;
     return g;
   }
 
-  // --- Upgraded Qing Defender Soldier ---
-  // Authentic Green Standard / Eight Banners coastal defender (1841)
   function makeQingSoldier() {
     var g = new THREE.Group();
-    var blueSilk = mat(0x1e3a68, 0.82, 0.05);
-    var redTrim = mat(0xa82824, 0.8, 0.05);
-    var darkNavy = mat(0x13233f, 0.9, 0.02);
-    var skin = mat(0xe5b88a, 0.85, 0.0);
-    var strawHat = mat(0xd6be8a, 0.92, 0.0);
-    var redTassel = mat(0xbd2424, 0.95, 0.0);
-    var brassKnob = mat(0xd4af37, 0.4, 0.7);
-
-    // Torso: flared traditional robe (Magua)
-    g.add(cyl(0.23, 0.35, 1.08, blueSilk, 0, 0.56, 0, 14));
-    g.add(box(0.52, 0.24, 0.32, blueSilk, 0, 1.1, 0));
-
-    // Circular chest insignia patch (补子) displaying bravery "勇"
-    var patchBorder = cyl(0.14, 0.14, 0.02, redTrim, 0, 0.92, 0.165, 16);
-    patchBorder.rotation.x = Math.PI / 2;
-    g.add(patchBorder);
-    var patchCenter = cyl(0.11, 0.11, 0.022, mat(0xf4f1ea, 0.9, 0), 0, 0.92, 0.166, 16);
-    patchCenter.rotation.x = Math.PI / 2;
-    g.add(patchCenter);
-    // Dark character mark
-    var patchMark = box(0.07, 0.07, 0.025, mat(0x111111, 0.9, 0), 0, 0.92, 0.168);
-    g.add(patchMark);
-
-    // Trousers & boots
-    g.add(box(0.16, 0.52, 0.22, darkNavy, -0.13, 0.26, 0));
-    g.add(box(0.16, 0.52, 0.22, darkNavy, 0.13, 0.26, 0));
-    // Black boots with thick white soles
-    g.add(box(0.17, 0.18, 0.26, mat(0x1a1a1a, 0.7, 0.1), -0.13, 0.09, 0.02));
-    g.add(box(0.17, 0.18, 0.26, mat(0x1a1a1a, 0.7, 0.1), 0.13, 0.09, 0.02));
-    g.add(box(0.175, 0.04, 0.27, mat(0xf0eee8, 0.9, 0), -0.13, 0.02, 0.02));
-    g.add(box(0.175, 0.04, 0.27, mat(0xf0eee8, 0.9, 0), 0.13, 0.02, 0.02));
-
-    // Head and neck
-    g.add(cyl(0.09, 0.1, 0.14, skin, 0, 1.25, 0, 10));
-    g.add(sphere(0.16, skin, 0, 1.39, 0));
-
-    // Traditional Qing conical summer hat (红缨凉帽)
-    var hatBrim = cyl(0.44, 0.44, 0.035, strawHat, 0, 1.5, 0, 18);
-    var hatCone = cone(0.28, 0.24, strawHat, 0, 1.62, 0, 18);
-    var tassel = cone(0.16, 0.28, redTassel, 0, 1.66, 0, 16);
-    var finial = sphere(0.045, brassKnob, 0, 1.78, 0);
-    g.add(hatBrim);
-    g.add(hatCone);
-    g.add(tassel);
-    g.add(finial);
-
-    // Waist sash with scabbard & saber (柳叶刀 Liuyedao)
-    var sash = box(0.5, 0.08, 0.33, mat(0xd4af37, 0.8, 0.1), 0, 0.68, 0);
-    g.add(sash);
-    var scabbard = box(0.045, 0.72, 0.08, mat(0x2d1810, 0.7, 0.1), -0.28, 0.52, 0);
-    scabbard.rotation.z = -0.25;
-    g.add(scabbard);
-    var guard = cyl(0.055, 0.055, 0.02, brassKnob, -0.22, 0.86, 0, 10);
-    g.add(guard);
-
+    // Blue robe: tapered body (cylinder) + shoulders
+    g.add(cyl(0.22, 0.34, 1.05, 0x2e4a7a, 0, 0.55, 0, 12));
+    g.add(box(0.5, 0.22, 0.3, 0x2e4a7a, 0, 1.08, 0));
+    // Trousers / legs
+    g.add(box(0.16, 0.5, 0.2, 0x1f3558, -0.12, 0.25, 0));
+    g.add(box(0.16, 0.5, 0.2, 0x1f3558, 0.12, 0.25, 0));
+    // Head
+    g.add(sphere(0.16, 0xe8b98a, 0, 1.36, 0));
+    // Conical hat: brim disc + cone
+    var brim = cyl(0.42, 0.42, 0.04, 0xc2a878, 0, 1.48, 0, 14);
+    var top = cone(0.26, 0.22, 0xc2a878, 0, 1.59, 0);
+    g.add(brim);
+    g.add(top);
     // Musket
     g.add(makeMusket());
     g.userData = { type: 'qing-soldier' };
@@ -504,15 +79,15 @@ var Models = (function () {
 
   function fitToHeight(root, height) {
     root.updateMatrixWorld(true);
-    var b = new THREE.Box3().setFromObject(root);
-    var size = b.getSize(new THREE.Vector3());
+    var box = new THREE.Box3().setFromObject(root);
+    var size = box.getSize(new THREE.Vector3());
     if (size.y > 1e-6) root.scale.multiplyScalar(height / size.y);
     root.updateMatrixWorld(true);
-    b.setFromObject(root);
-    var center = b.getCenter(new THREE.Vector3());
+    box.setFromObject(root);
+    var center = box.getCenter(new THREE.Vector3());
     root.position.x -= center.x;
     root.position.z -= center.z;
-    root.position.y -= b.min.y;
+    root.position.y -= box.min.y;
     return root;
   }
 
@@ -542,6 +117,8 @@ var Models = (function () {
     return 0;
   }
 
+  // The clip advances the hips forward; the game already moves the pivot, so
+  // keep only the vertical bob to avoid foot-slide + snap at loop.
   function stripRootMotion(clip) {
     var tracks = clip.tracks || [];
     for (var i = 0; i < tracks.length; i++) {
@@ -652,7 +229,7 @@ var Models = (function () {
     var loader = new THREE.GLTFLoader();
     loader.load(url, function (gltf) {
       var root = gltf.scene;
-      root.rotation.y = Math.PI;
+      root.rotation.y = Math.PI; // exported model faces +Z; game forward is -Z
       fitToHeight(root, 1.92);
       britishClips = gltf.animations || [];
       for (var i = 0; i < britishClips.length; i++) {
@@ -689,687 +266,881 @@ var Models = (function () {
       holder.userData = model.userData;
       return holder;
     }
-
     var g = new THREE.Group();
     // Red coat
     g.add(box(0.48, 1.0, 0.3, 0xb02a22, 0, 0.85, 0));
-    // White crossbelts (bandolera cruzada)
-    g.add(box(0.5, 0.9, 0.31, 0xf0efe8, 0, 0.85, 0));
     // White trousers
     g.add(box(0.16, 0.55, 0.2, 0xe8e4da, -0.12, 0.28, 0));
     g.add(box(0.16, 0.55, 0.2, 0xe8e4da, 0.12, 0.28, 0));
     // Head
     g.add(sphere(0.16, 0xe8b98a, 0, 1.52, 0));
-    // Black Belgic shako with plate & peak
+    // Black shako (tall cylinder) + brim
     g.add(cyl(0.16, 0.19, 0.3, 0x141414, 0, 1.75, 0, 12));
     g.add(box(0.3, 0.03, 0.2, 0x141414, 0, 1.62, -0.12));
-    // Shako brass plate & white plume
-    g.add(box(0.08, 0.08, 0.02, 0xd4af37, 0, 1.76, -0.18));
-    g.add(cyl(0.025, 0.025, 0.14, 0xf5f5f5, 0, 1.94, -0.12, 8));
     // Musket
     g.add(makeMusket());
     g.userData = { type: 'british-soldier' };
     return g;
   }
 
-  // --- Upgraded 3-Masted British Warship of the Line / Frigate ---
-  // Realistic Nelson-checker hull, bowsprit, tiered masts, yards, billowing sails, flags.
   function makeShip() {
     var g = new THREE.Group();
-    var hullWood = getWoodMaterial(true, 4, 1);
-    var deckWood = getWoodMaterial(false, 3, 2);
-    var mastWood = getWoodMaterial(true);
-    var whiteStripe = mat(0xe5e1d5, 0.7, 0.05);
-    var blackStripe = mat(0x1a1a1a, 0.75, 0.1);
-    var sailMat = mat(0xf3eee1, 0.9, 0.0);
-    var redInside = mat(0x8a2420, 0.8, 0.05);
-
-    // Main lower hull
-    var hull = box(3.4, 1.4, 13.5, hullWood, 0, 0.7, 0);
-    g.add(hull);
-
-    // Curved bow cutwater
-    var bow = box(2.8, 1.4, 4.0, hullWood, 0, 0.75, 8.2);
+    var hullColor = 0x5a4230;
+    var deckColor = 0x8a6b4a;
+    // Hull: long box + bow box + forward cone wedge
+    g.add(box(3.2, 1.1, 10, hullColor, 0, 0.6, 0));
+    var bow = box(2.6, 1.0, 3.0, hullColor, 0, 0.55, 6.2);
+    // Simple bow wedge using a scaled cone rotated forward
+    var wedge = cone(1.4, 3.0, hullColor, 0, 0.6, 6.8);
+    wedge.rotation.x = Math.PI / 2;
+    wedge.scale.set(1, 1, 0.8);
     g.add(bow);
-    var cutwater = box(0.3, 1.6, 3.2, blackStripe, 0, 0.8, 9.8);
-    cutwater.rotation.x = -0.35;
-    g.add(cutwater);
-
-    // Raised quarterdeck at stern
-    var quarterDeck = box(3.2, 0.9, 4.2, hullWood, 0, 1.75, -5.2);
-    g.add(quarterDeck);
-    // Transom stern gallery (ventanales de popa del capitán)
-    var sternGallery = box(3.0, 0.7, 0.2, mat(0x759cb8, 0.2, 0.4), 0, 1.85, -7.35);
-    g.add(sternGallery);
-
-    // Nelson Checker gunport bands (bandas negras y crema a los costados)
-    function addGunports(sideX) {
-      var stripe = box(0.08, 0.5, 12.0, whiteStripe, sideX, 1.05, -0.2);
-      g.add(stripe);
-      // Gunport lids (tapas de cañonera abiertas con cañones asomando)
-      for (var z = -4.5; z <= 4.5; z += 1.8) {
-        var lid = box(0.12, 0.26, 0.28, sideX > 0 ? redInside : redInside, sideX * 1.02, 1.25, z);
-        lid.rotation.z = sideX > 0 ? -0.4 : 0.4;
-        g.add(lid);
-        // Cannon barrel poking through
-        var gun = cyl(0.045, 0.065, 0.55, getIronMaterial(), sideX * 1.05, 1.05, z, 8);
-        gun.rotation.z = Math.PI / 2;
-        g.add(gun);
-      }
+    g.add(wedge);
+    // Deck
+    g.add(box(2.8, 0.15, 9.4, deckColor, 0, 1.2, 0.4));
+    // Rail strips
+    g.add(box(0.15, 0.5, 9.4, hullColor, -1.5, 1.4, 0.4));
+    g.add(box(0.15, 0.5, 9.4, hullColor, 1.5, 1.4, 0.4));
+    // Masts (3) with white sails (thin boxes)
+    var mastZs = [-3.4, 0.4, 4.2];
+    var mastHs = [6.5, 8.0, 5.5];
+    for (var i = 0; i < 3; i++) {
+      g.add(cyl(0.07, 0.1, mastHs[i], 0x6b4a2f, 0, mastHs[i] / 2 + 1.2, mastZs[i], 8));
+      var sailW = 2.2 - i * 0.25;
+      var sail = box(sailW, 1.8, 0.08, 0xf2ead8, 0, mastHs[i] / 2 + 1.6, mastZs[i]);
+      g.add(sail);
+      var yard = cyl(0.03, 0.03, sailW + 0.6, 0x6b4a2f, 0, mastHs[i] / 2 + 2.5, mastZs[i], 6);
+      yard.rotation.z = Math.PI / 2;
+      g.add(yard);
     }
-    addGunports(1.72);
-    addGunports(-1.72);
-
-    // Deck with planking
-    var deck = box(3.1, 0.15, 12.8, deckWood, 0, 1.42, 0.2);
-    g.add(deck);
-
-    // Bulwarks / gunwales
-    g.add(box(0.14, 0.55, 12.8, blackStripe, -1.6, 1.68, 0.2));
-    g.add(box(0.14, 0.55, 12.8, blackStripe, 1.6, 1.68, 0.2));
-
-    // Bowsprit (bauprés con botalón de foque)
-    var bowsprit = cyl(0.09, 0.13, 6.2, mastWood, 0, 2.2, 11.2, 8);
-    bowsprit.rotation.x = -Math.PI / 2 + 0.35;
-    g.add(bowsprit);
-
-    // 3 Full Masts: Foremast, Mainmast, Mizzenmast
-    var mastConfigs = [
-      { z: 4.8, h: 9.5, sailW: 2.8, yards: [3.4, 2.8, 2.2] },  // Trinquete
-      { z: 0.2, h: 11.8, sailW: 3.4, yards: [4.2, 3.4, 2.6] }, // Mayor
-      { z: -4.0, h: 8.8, sailW: 2.4, yards: [2.8, 2.3, 1.8] }, // Mesana
-    ];
-
-    for (var m = 0; m < mastConfigs.length; m++) {
-      var cfg = mastConfigs[m];
-      var mX = 0;
-      var mZ = cfg.z;
-      var mastMesh = cyl(0.08, 0.14, cfg.h, mastWood, mX, cfg.h * 0.5 + 1.2, mZ, 8);
-      g.add(mastMesh);
-
-      // Fighting top (cofa redonda para vigías y tiradores de marina)
-      var cofa = cyl(0.65, 0.65, 0.1, blackStripe, mX, cfg.h * 0.42 + 1.2, mZ, 12);
-      g.add(cofa);
-
-      // Yards (vergas) and billowing square sails (velas henchidas)
-      var tiers = 3;
-      for (var t = 0; t < tiers; t++) {
-        var yH = (cfg.h * 0.38) + t * (cfg.h * 0.24) + 1.2;
-        var yW = cfg.yards[t];
-        var yard = cyl(0.035, 0.035, yW, mastWood, mX, yH, mZ, 6);
-        yard.rotation.z = Math.PI / 2;
-        g.add(yard);
-
-        // Curved sail catching the wind
-        var sW = yW * 0.88;
-        var sH = cfg.h * 0.2;
-        var sail = box(sW, sH, 0.07, sailMat, mX, yH - sH * 0.48, mZ + 0.15);
-        sail.rotation.x = 0.12;
-        g.add(sail);
-      }
-
-      // Shrouds / Standing rigging (obenques laterales)
-      function addShrouds(side) {
-        var shroud = box(0.04, cfg.h * 0.5, 0.04, mat(0x222222, 0.9, 0), side * 1.5, (cfg.h * 0.25) + 1.4, mZ);
-        shroud.rotation.z = side * -0.15;
-        g.add(shroud);
-      }
-      addShrouds(1);
-      addShrouds(-1);
-    }
-
-    // White Ensign / Royal Navy Flag at stern gaff
-    var ensignPole = cyl(0.03, 0.03, 2.4, mastWood, 0, 3.2, -6.8, 6);
-    ensignPole.rotation.x = -0.3;
-    g.add(ensignPole);
-
-    var ensignFlag = box(1.4, 0.9, 0.02, mat(0xfbfbfb, 0.9, 0), 0.72, 3.6, -7.1);
-    g.add(ensignFlag);
-    // Red St George's cross on flag
-    var crossH = box(1.42, 0.16, 0.025, mat(0xcc292b, 0.9, 0), 0.72, 3.6, -7.1);
-    var crossV = box(0.16, 0.92, 0.025, mat(0xcc292b, 0.9, 0), 0.42, 3.6, -7.1);
-    g.add(crossH);
-    g.add(crossV);
-
+    // Stern cabin
+    g.add(box(2.4, 0.9, 2.0, deckColor, 0, 1.7, -4.2));
+    // White ensign at the stern (no lights, no shadow pass).
+    var ensign = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.0, 0.62),
+      new THREE.MeshStandardMaterial({ map: getEnsignTexture(), side: THREE.DoubleSide, roughness: 1 })
+    );
+    ensign.position.set(0, 3.4, -5.1);
+    ensign.rotation.y = Math.PI;
+    ensign.castShadow = false;
+    ensign.receiveShadow = false;
+    ensign.userData.type = 'ensign';
+    g.add(ensign);
     g.userData = { type: 'ship' };
     return g;
   }
 
-  // --- Upgraded Fort Wall Model ---
-  // Sloped battered base, stone masonry texture, stone coping, almenas con aspilleras.
-  function makeFortWall(length, height) {
-    var h = height || 4;
-    var g = new THREE.Group();
-    var thickness = 1.45;
-    var stoneMat = getStoneWallMaterial(Math.max(1, Math.round(length / 4)), Math.max(1, Math.round(h / 2)));
-    var darkStone = getStoneWallMaterial(Math.max(1, Math.round(length / 4)), 1);
+  function part(geometry, color, x, y, z, rx, ry, rz) {
+    return { g: geometry, c: color, p: [x || 0, y || 0, z || 0], r: [rx || 0, ry || 0, rz || 0] };
+  }
 
-    // Sloped battered base (talud chino defensivo)
-    var batterBase = box(length, 0.6, thickness + 0.5, darkStone, 0, 0.3, 0);
-    g.add(batterBase);
+  function mergeParts(parts) {
+    var totalVerts = 0;
+    var totalIndices = 0;
+    for (var i = 0; i < parts.length; i++) {
+      var count = parts[i].g.attributes.position.count;
+      totalVerts += count;
+      totalIndices += parts[i].g.index ? parts[i].g.index.count : count;
+    }
+    var positions = new Float32Array(totalVerts * 3);
+    var normals = new Float32Array(totalVerts * 3);
+    var colors = new Float32Array(totalVerts * 3);
+    var indices = new (totalVerts > 65535 ? Uint32Array : Uint16Array)(totalIndices);
+    var vertexOffset = 0;
+    var indexOffset = 0;
+    var quaternion = new THREE.Quaternion();
+    var euler = new THREE.Euler();
+    var vector = new THREE.Vector3();
+    var color = new THREE.Color();
 
-    // Main masonry wall body
-    var wallBody = box(length, h - 0.5, thickness, stoneMat, 0, (h + 0.1) * 0.5, 0);
-    g.add(wallBody);
-
-    // Stone coping ledge / cordon along the top
-    var coping = box(length + 0.1, 0.22, thickness + 0.35, darkStone, 0, h + 0.05, 0);
-    g.add(coping);
-
-    // Crenellations: rectangular merlons with embrasures (lower on seaward parapet for clear sightlines)
-    var isParapet = h <= 1.5;
-    var n = Math.max(3, Math.floor(length / (isParapet ? 3.2 : 2.2)));
-    var merlonW = (length / n) * (isParapet ? 0.44 : 0.55);
-    var merlonH = isParapet ? 0.34 : 0.52;
-    var merlonY = isParapet ? h + 0.25 : h + 0.4;
-    for (var i = 0; i < n; i++) {
-      var x = -length / 2 + (i + 0.5) * (length / n);
-      var merlon = box(merlonW, merlonH, thickness * 0.6, stoneMat, x, merlonY, 0);
-      g.add(merlon);
+    for (var p = 0; p < parts.length; p++) {
+      var partDef = parts[p];
+      var geometry = partDef.g;
+      euler.set(partDef.r[0], partDef.r[1], partDef.r[2]);
+      quaternion.setFromEuler(euler);
+      color.setHex(partDef.c);
+      var position = geometry.attributes.position;
+      var normal = geometry.attributes.normal;
+      for (var v = 0; v < position.count; v++) {
+        vector.fromBufferAttribute(position, v).applyQuaternion(quaternion);
+        var at = (vertexOffset + v) * 3;
+        positions[at] = vector.x + partDef.p[0];
+        positions[at + 1] = vector.y + partDef.p[1];
+        positions[at + 2] = vector.z + partDef.p[2];
+        vector.fromBufferAttribute(normal, v).applyQuaternion(quaternion);
+        normals[at] = vector.x;
+        normals[at + 1] = vector.y;
+        normals[at + 2] = vector.z;
+        colors[at] = color.r;
+        colors[at + 1] = color.g;
+        colors[at + 2] = color.b;
+      }
+      if (geometry.index) {
+        for (var n = 0; n < geometry.index.count; n++) {
+          indices[indexOffset + n] = geometry.index.getX(n) + vertexOffset;
+        }
+        indexOffset += geometry.index.count;
+      } else {
+        for (var q = 0; q < position.count; q++) {
+          indices[indexOffset + q] = vertexOffset + q;
+        }
+        indexOffset += position.count;
+      }
+      vertexOffset += position.count;
     }
 
-    g.userData = { type: 'fort-wall' };
+    var merged = new THREE.BufferGeometry();
+    merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    merged.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    merged.setIndex(new THREE.BufferAttribute(indices, 1));
+    merged.computeBoundingSphere();
+    return merged;
+  }
+
+
+  // --- Historical set dressing ------------------------------------------
+  // Every prop below is merged into one vertex-coloured mesh: the whole
+  // squadron plus the chain adds a handful of draw calls, no lights and no
+  // colliders. Colours follow the 1841 palette (tarred hulls, ochre sails).
+  var NAVY = {
+    hull: 0x2a2320, deck: 0x5a4432, wood: 0x6b4a2f, iron: 0x2f2f33,
+    sail: 0xa89a82, junkSail: 0x8a6a44, white: 0xe8e6e0, blue: 0x1b2a5a,
+    red: 0xb3202a, stone: 0xb8a07a, roof: 0x7a3a2a, thatch: 0x8a7448,
+  };
+
+  function mergedModel(parts, options) {
+    var opts = options || {};
+    var material = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: opts.roughness === undefined ? 0.9 : opts.roughness,
+      metalness: opts.metalness || 0,
+    });
+    var mesh = new THREE.Mesh(mergeParts(parts), material);
+    mesh.castShadow = !!opts.castShadow;
+    mesh.receiveShadow = true;
+    mesh.userData.type = opts.type || 'prop';
+    return mesh;
+  }
+
+  function pBox(w, h, d, color, x, y, z, rx, ry, rz) {
+    return part(new THREE.BoxGeometry(w, h, d), color, x, y, z, rx, ry, rz);
+  }
+
+  function pCyl(rTop, rBottom, h, color, x, y, z, rx, ry, rz, segments) {
+    return part(new THREE.CylinderGeometry(rTop, rBottom, h, segments || 8), color, x, y, z, rx, ry, rz);
+  }
+
+  function pCone(radius, h, color, x, y, z, rx, ry, rz, segments) {
+    return part(new THREE.ConeGeometry(radius, h, segments || 4), color, x, y, z, rx, ry, rz);
+  }
+
+  // The Nemesis: iron paddle steamer, two wheels, funnel and a white ensign.
+  function makeSteamer() {
+    var parts = [];
+    parts.push(pBox(3.6, 1.3, 12.0, NAVY.hull, 0, 0.65, 0));
+    parts.push(pCone(1.6, 2.6, NAVY.hull, 0, 0.65, -6.8, -Math.PI / 2, 0, 0, 8));
+    parts.push(pBox(3.2, 0.16, 11.2, NAVY.deck, 0, 1.33, 0));
+    for (var side = -1; side <= 1; side += 2) {
+      parts.push(pBox(0.55, 1.7, 2.4, NAVY.wood, side * 1.95, 1.2, 0.2));
+      parts.push(pCyl(0.95, 0.95, 0.16, NAVY.iron, side * 2.28, 1.2, 0.2, 0, 0, Math.PI / 2, 12));
+    }
+    parts.push(pCyl(0.28, 0.28, 2.3, NAVY.iron, 0, 2.7, 1.1, 0, 0, 0, 8));
+    parts.push(pBox(3.0, 0.9, 1.6, NAVY.wood, 0, 1.85, 3.6));
+    for (var m = 0; m < 2; m++) {
+      var mz = m === 0 ? -2.4 : 3.4;
+      var mh = m === 0 ? 6.2 : 5.2;
+      parts.push(pCyl(0.07, 0.09, mh, NAVY.wood, 0, 1.4 + mh / 2, mz, 0, 0, 0, 6));
+      parts.push(pBox(2.0, 1.6, 0.06, NAVY.sail, 0, 1.6 + mh * 0.6, mz));
+    }
+    parts.push(pBox(1.2, 0.7, 0.06, NAVY.white, 0, 6.4, 4.9));
+    parts.push(pBox(0.5, 0.3, 0.07, NAVY.blue, -0.34, 6.55, 4.86));
+    return mergedModel(parts, { type: 'steamer', roughness: 0.75, metalness: 0.1 });
+  }
+
+  // War junk: battened sails (horizontal slats), stern cabin and fight pennant.
+  function makeJunk() {
+    var parts = [];
+    parts.push(pBox(3.0, 1.1, 9.0, NAVY.wood, 0, 0.55, 0));
+    parts.push(pBox(2.6, 0.16, 8.2, NAVY.deck, 0, 1.16, 0));
+    parts.push(pBox(1.2, 0.8, 2.0, NAVY.wood, 0, 1.5, 2.9));
+    var zs = [-2.8, 0.2, 3.2];
+    var hs = [5.6, 6.6, 5.0];
+    for (var m = 0; m < 3; m++) {
+      parts.push(pCyl(0.08, 0.1, hs[m], NAVY.wood, 0, 1.2 + hs[m] / 2, zs[m], 0, 0, 0, 6));
+      for (var b = 0; b < 5; b++) {
+        parts.push(pBox(2.7, 0.42, 0.06, NAVY.junkSail, 0, 2.3 + b * 0.6, zs[m] - 0.12));
+      }
+    }
+    parts.push(pBox(0.1, 1.6, 0.5, NAVY.red, 0, 8.1, 4.6));
+    return mergedModel(parts, { type: 'junk', roughness: 0.95 });
+  }
+
+  // The Bogue boom: chain cables over wooden rafts, laid across the strait.
+  function makeChainBoom() {
+    var parts = [];
+    for (var i = 0; i < 11; i++) {
+      var x = -30 + i * 6;
+      parts.push(pBox(6.2, 0.18, 0.18, NAVY.iron, x + 3, 0.55, 0));
+      if (i % 2 === 0) {
+        parts.push(pBox(2.6, 0.5, 2.2, NAVY.wood, x + 3, 0.25, 1.4));
+        parts.push(pBox(0.5, 1.2, 0.5, NAVY.wood, x + 3, 0.8, 2.2));
+      }
+    }
+    return mergedModel(parts, { type: 'chain-boom', roughness: 0.6, metalness: 0.5 });
+  }
+
+  // Fire raft: a burning hulk that drifts toward the squadron.
+  function makeFireRaft() {
+    var parts = [];
+    parts.push(pBox(2.4, 0.35, 3.4, NAVY.wood, 0, 0.18, 0));
+    parts.push(pBox(0.6, 0.3, 3.0, NAVY.wood, -0.7, 0.4, 0));
+    parts.push(pBox(0.6, 0.3, 3.0, NAVY.wood, 0.7, 0.4, 0));
+    parts.push(pBox(1.2, 0.8, 1.2, NAVY.thatch, 0, 0.9, 0.4));
+    var raft = mergedModel(parts, { type: 'fire-raft', roughness: 0.95 });
+    var ember = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 8, 6),
+      new THREE.MeshStandardMaterial({
+        color: 0xff7a2a, emissive: 0xff5a10, emissiveIntensity: 1.6, roughness: 0.6,
+      })
+    );
+    ember.position.set(0, 1.5, 0.2);
+    ember.castShadow = false;
+    ember.userData.type = 'fire-raft-ember';
+    raft.add(ember);
+    raft.userData.ember = ember;
+    return raft;
+  }
+
+  // Fishing village and pagodas on the shore, far from the walls.
+  function makeVillage() {
+    var parts = [];
+    for (var p = 0; p < 2; p++) {
+      var px = p * 7 - 3;
+      for (var t = 0; t < 3; t++) {
+        var w = 4.2 - t * 1.1;
+        parts.push(pBox(w, 1.6, w, NAVY.stone, px, 0.8 + t * 1.8, 0));
+        parts.push(pCone(w * 0.85, 0.9, NAVY.roof, px, 1.7 + t * 1.8, 0, 0, 0, 0, 4));
+      }
+      parts.push(pCone(0.7, 1.4, NAVY.roof, px, 6.6, 0, 0, 0, 0, 6));
+    }
+    for (var h = 0; h < 6; h++) {
+      var hx = -8 + h * 3.2;
+      var hz = 5 + (h % 2) * 2.4;
+      parts.push(pBox(2.2, 1.4, 2.0, NAVY.stone, hx, 0.7, hz));
+      parts.push(pCone(1.7, 0.8, NAVY.thatch, hx, 1.8, hz, 0, 0, 0, 4));
+    }
+    return mergedModel(parts, { type: 'village', roughness: 0.95 });
+  }
+
+  // Wall gun (jingal) on a wooden pintle: the fort's secondary armament.
+  function makeJingal() {
+    var parts = [];
+    parts.push(pBox(0.16, 0.46, 0.16, NAVY.wood, 0, 0.23, 0.18));
+    parts.push(pBox(0.46, 0.08, 0.34, NAVY.wood, 0, 0.48, 0.16));
+    parts.push(pCyl(0.04, 0.055, 1.7, NAVY.iron, 0, 0.6, -0.68, Math.PI / 2, 0, 0, 8));
+    parts.push(pBox(0.12, 0.12, 0.42, NAVY.wood, 0, 0.6, 0.06));
+    return mergedModel(parts, { type: 'jingal', roughness: 0.8, metalness: 0.3 });
+  }
+
+  // Rattan shield of the Qing braves: a lacquered disc with an iron boss.
+  function makeRattanShield() {
+    var parts = [];
+    parts.push(pCyl(0.34, 0.34, 0.05, 0x9a7444, 0, 0, 0, Math.PI / 2, 0, 0, 14));
+    parts.push(pCyl(0.36, 0.36, 0.02, 0x6b4a2f, 0, 0, 0.03, Math.PI / 2, 0, 0, 14));
+    parts.push(pBox(0.14, 0.14, 0.06, 0x3a3a3d, 0, 0, 0.05));
+    return mergedModel(parts, { type: 'rattan-shield', roughness: 0.95 });
+  }
+
+  // Congreve rocket rack: the battery that set the junks alight.
+
+  // --- Fort wall facade --------------------------------------------------
+  // One 256px stone canvas tiled every 3.2 m, one cached geometry per box
+  // size (with UVs scaled by metres so courses never stretch), and a single
+  // shared material set: the six walls cost no extra uploads.
+  var STONE_TILE = 3.6;
+  var stoneTexture = null;
+  var wallMats = null;
+  var wallGeoCache = {};
+
+  function makeFallbackTexture(r, g, b, repeat) {
+    var data = new Uint8Array([r, g, b, 255]);
+    var tex = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
+    if (repeat) {
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+    }
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  function getStoneTexture() {
+    if (stoneTexture) return stoneTexture;
+    if (typeof document === 'undefined' || !document.createElement) {
+      stoneTexture = makeFallbackTexture(178, 149, 109, true);
+      return stoneTexture;
+    }
+    var size = 256;
+    var c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    var g = c.getContext('2d');
+    // Deep mortar bed; blocks sit on top with a visible 3px joint.
+    g.fillStyle = '#7a5738';
+    g.fillRect(0, 0, size, size);
+    var seed = 1841;
+    function rnd() {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    }
+    var rowH = 32;
+    for (var row = 0; row * rowH < size; row++) {
+      var y = row * rowH;
+      var x = -((row % 2) * 30) - 12;
+      while (x < size) {
+        var w = 34 + rnd() * 34;
+        var tone = 0.74 + rnd() * 0.38;
+        g.fillStyle = 'rgb(' + Math.round(198 * tone) + ',' +
+          Math.round(166 * tone) + ',' + Math.round(122 * tone) + ')';
+        g.fillRect(x + 3, y + 3, w - 4, rowH - 4);
+        // Chipped corner on some blocks.
+        if (rnd() > 0.8) {
+          g.fillStyle = 'rgba(104, 80, 54, 0.55)';
+          g.fillRect(x + 3, y + 3, 7, 6);
+        }
+        x += w;
+      }
+    }
+    g.strokeStyle = 'rgba(92, 66, 42, 0.85)';
+    g.lineWidth = 3;
+    for (var line = 0; line <= size; line += rowH) {
+      g.beginPath();
+      g.moveTo(0, line);
+      g.lineTo(size, line);
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(80, 62, 44, 0.2)';
+    for (var i = 0; i < 520; i++) {
+      g.fillRect(Math.floor(rnd() * size), Math.floor(rnd() * size), 2 + (i % 2), 2);
+    }
+    stoneTexture = new THREE.CanvasTexture(c);
+    stoneTexture.wrapS = THREE.RepeatWrapping;
+    stoneTexture.wrapT = THREE.RepeatWrapping;
+    stoneTexture.needsUpdate = true;
+    return stoneTexture;
+  }
+
+  function wallMaterials() {
+    if (wallMats) return wallMats;
+    var tex = getStoneTexture();
+    wallMats = {
+      stone: new THREE.MeshStandardMaterial({ map: tex, color: 0xffffff, roughness: 0.95 }),
+      stoneDark: new THREE.MeshStandardMaterial({ map: tex, color: 0xc2b19a, roughness: 0.98 }),
+      stoneTrim: new THREE.MeshStandardMaterial({ map: tex, color: 0xe8d9bf, roughness: 0.9 }),
+      wood: new THREE.MeshStandardMaterial({ color: 0x6b4630, roughness: 0.85 }),
+      iron: new THREE.MeshStandardMaterial({ color: 0x3a3a3d, roughness: 0.6, metalness: 0.55 }),
+      banner: new THREE.MeshStandardMaterial({
+        map: getFlagTexture(),
+        side: THREE.DoubleSide,
+        roughness: 1,
+        metalness: 0,
+      }),
+    };
+    return wallMats;
+  }
+
+  // BoxGeometry lays faces in +X, -X, +Y, -Y, +Z, -Z order; each face's
+  // natural size drives its UV span so a 40 m wall shows 12 stone tiles.
+  function wallGeometry(w, h, d) {
+    var key = w + '|' + h + '|' + d;
+    if (wallGeoCache[key]) return wallGeoCache[key];
+    var geo = new THREE.BoxGeometry(w, h, d);
+    var uv = geo.attributes.uv;
+    var spansU = [d, d, w, w, w, w];
+    var spansV = [h, h, d, d, h, h];
+    for (var face = 0; face < 6; face++) {
+      for (var i = 0; i < 4; i++) {
+        var v = face * 4 + i;
+        uv.setXY(v, uv.getX(v) * spansU[face] / STONE_TILE, uv.getY(v) * spansV[face] / STONE_TILE);
+      }
+    }
+    uv.needsUpdate = true;
+    wallGeoCache[key] = geo;
+    return geo;
+  }
+
+  function wallBox(parent, role, w, h, d, x, y, z, material, flat) {
+    var mesh = new THREE.Mesh(wallGeometry(w, h, d), material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = !flat;
+    mesh.receiveShadow = true;
+    mesh.userData.wallRole = role;
+    parent.add(mesh);
+    return mesh;
+  }
+
+  function addMerlons(parent, length, height, material) {
+    var margin = 1.4;
+    var usable = length - margin * 2;
+    var count = Math.max(2, Math.floor(usable / 1.9));
+    var step = usable / count;
+    var base = height + 0.26;
+    for (var i = 0; i < count; i++) {
+      var x = -usable / 2 + (i + 0.5) * step;
+      wallBox(parent, 'merlon', 0.9, 0.4, 0.7, x, base + 0.2, 0, material, true);
+    }
+  }
+
+  function addBanners(parent, length, height, face, mats) {
+    for (var side = -1; side <= 1; side += 2) {
+      var x = side * length / 4;
+      var pole = wallBox(parent, 'banner-pole', 1.95, 0.06, 0.06,
+        x, height * 0.72 + 0.55, face * 0.74, mats.iron, true);
+      pole.castShadow = false;
+      var cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.05), mats.banner);
+      cloth.position.set(x, height * 0.72, face * 0.74);
+      cloth.rotation.y = face > 0 ? 0 : Math.PI;
+      cloth.castShadow = false;
+      cloth.receiveShadow = false;
+      cloth.userData.wallRole = 'banner';
+      parent.add(cloth);
+    }
+  }
+
+  function addGate(parent, face, mats) {
+    // The portal wraps the wall thickness so it reads from both faces; the
+    // leaves sit proud of the inner face, never buried inside the body.
+    for (var side = -1; side <= 1; side += 2) {
+      wallBox(parent, 'gate-jamb', 0.85, 3.5, 1.96, side * 2.2, 1.75, 0, mats.stoneDark);
+      wallBox(parent, 'gate-leaf', 1.7, 3.4, 0.14, side * 0.86, 1.7, face * 0.78, mats.wood, true);
+      for (var band = 0; band < 2; band++) {
+        wallBox(parent, 'gate-band', 1.7, 0.14, 0.2,
+          side * 0.86, 0.95 + band * 1.5, face * 0.87, mats.iron, true);
+      }
+    }
+    wallBox(parent, 'gate-lintel', 4.7, 0.8, 1.96, 0, 3.9, 0, mats.stoneDark);
+    wallBox(parent, 'gate-cornice', 5.0, 0.16, 2.12, 0, 4.38, 0, mats.stoneTrim, true);
+    wallBox(parent, 'gate-sill', 3.6, 0.12, 0.7, 0, 0.06, face * 0.86, mats.stoneDark, true);
+    wallBox(parent, 'gate-band', 3.4, 0.1, 0.12, 0, 1.5, face * 0.9, mats.iron, true);
+    wallBox(parent, 'gate-plaque', 2.9, 0.5, 0.12, 0, 4.76, face * 0.75, mats.wood, true);
+  }
+
+  function addProvisions(parent, face, mats) {
+    var barrelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.92, 12);
+    var hoopGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.1, 12);
+    for (var i = 0; i < 2; i++) {
+      var x = 5.2 + i * 1.15;
+      var barrel = new THREE.Mesh(barrelGeo, mats.wood);
+      barrel.position.set(x, 0.46, face * 1.35);
+      barrel.castShadow = false;
+      barrel.receiveShadow = true;
+      barrel.userData.wallRole = 'barrel';
+      parent.add(barrel);
+      for (var h = 0; h < 2; h++) {
+        var hoop = new THREE.Mesh(hoopGeo, mats.iron);
+        hoop.position.set(x, 0.24 + h * 0.44, face * 1.35);
+        hoop.castShadow = false;
+        hoop.userData.wallRole = 'barrel-hoop';
+        parent.add(hoop);
+      }
+    }
+    wallBox(parent, 'crate', 0.9, 0.9, 0.9, 7.75, 0.45, face * 1.35, mats.wood, true);
+    wallBox(parent, 'crate', 0.68, 0.62, 0.68, 7.85, 1.21, face * 1.35, mats.stoneDark, true);
+  }
+
+  function makeFortWall(length, height, options) {
+    var opts = options || {};
+    var kind = opts.kind || 'side';
+    var h = height || 4;
+    var face = opts.face === -1 ? -1 : 1;
+    var thickness = 1.4;
+    var mats = wallMaterials();
+    var g = new THREE.Group();
+    g.userData = { type: 'fort-wall', kind: kind };
+
+    // Battered footing, main body, walkway lip and coping.
+    wallBox(g, 'plinth', length, 0.5, thickness + 0.3, 0, 0.25, 0, mats.stoneDark);
+    wallBox(g, 'body', length, h, thickness, 0, h / 2, 0, mats.stone);
+    wallBox(g, 'walk', length, 0.14, thickness + 0.12, 0, h + 0.07, 0, mats.stone, true);
+    wallBox(g, 'coping', length, 0.12, thickness + 0.3, 0, h + 0.2, 0, mats.stoneTrim);
+
+    // End bastions hide the seams where two walls meet.
+    var bastionH = kind === 'parapet' ? h + 0.1 : h + 0.5;
+    for (var side = -1; side <= 1; side += 2) {
+      var x = side * (length / 2 - 0.8);
+      wallBox(g, 'bastion', 1.6, bastionH, thickness + 0.5, x, bastionH / 2, 0, mats.stone);
+      wallBox(g, 'bastion-cap', 1.8, 0.1, thickness + 0.7, x, bastionH + 0.05, 0, mats.stoneTrim, true);
+    }
+
+    // The seaward parapet stays clear: no merlons above the firing line.
+    if (kind !== 'parapet') addMerlons(g, length, h, mats.stone);
+
+    if (kind === 'landward') {
+      if (opts.gate) addGate(g, face, mats);
+      addProvisions(g, face, mats);
+    }
+    if (kind === 'landward' || kind === 'side') addBanners(g, length, h, face, mats);
+
     return g;
   }
 
-  // --- Upgraded Imperial Qing Coastal Cannon ---
-  // Realistic bronze barrel with staged reinforce rings, cascabel, trunnions,
-  // 4-wheeled naval truck carriage with quoin, iron bands, recoil animation pivot.
+  function makeTower(size, height) {
+    var mats = wallMaterials();
+    var g = new THREE.Group();
+    var s = size || 4;
+    var h = height || 7;
+    wallBox(g, 'tower-plinth', s + 0.4, 0.6, s + 0.4, 0, 0.3, 0, mats.stoneDark);
+    wallBox(g, 'tower-base', s, h, s, 0, h / 2, 0, mats.stone);
+    wallBox(g, 'tower-cornice', s + 0.5, 0.22, s + 0.5, 0, h + 0.11, 0, mats.stoneTrim);
+    g.userData = { type: 'fort-tower' };
+    return g;
+  }
+
+  // Unit banners: no national flag existed in 1841, so the garrison flies
+  // yellow standards with a character (勇, "brave") and a red border.
+  var bannerTextures = {};
+  function getBannerTexture(char) {
+    var glyph = char || '勇';
+    if (bannerTextures[glyph]) return bannerTextures[glyph];
+    if (typeof document === 'undefined' || !document.createElement) {
+      var fallback = makeFallbackTexture(216, 181, 42, false);
+      bannerTextures[glyph] = fallback;
+      return fallback;
+    }
+    var c = document.createElement('canvas');
+    c.width = 64; c.height = 40;
+    var g = c.getContext('2d');
+    g.fillStyle = '#d8b52a';
+    g.fillRect(0, 0, 64, 40);
+    g.strokeStyle = '#8f2a1f';
+    g.lineWidth = 4;
+    g.strokeRect(2, 2, 60, 36);
+    g.fillStyle = '#1f2a44';
+    if (typeof g.fillText === 'function') {
+      g.font = 'bold 26px "Microsoft YaHei", "Noto Sans SC", sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(glyph, 32, 21);
+    } else {
+      g.fillRect(22, 10, 20, 20);
+    }
+    var texture = new THREE.CanvasTexture(c);
+    texture.needsUpdate = true;
+    bannerTextures[glyph] = texture;
+    return texture;
+  }
+
+  function getFlagTexture() {
+    return getBannerTexture('勇');
+  }
+
+  // White ensign with a simplified Union canton, flown by the squadron.
+  var ensignTexture = null;
+  function getEnsignTexture() {
+    if (ensignTexture) return ensignTexture;
+    if (typeof document === 'undefined' || !document.createElement) {
+      ensignTexture = makeFallbackTexture(232, 230, 224, false);
+      return ensignTexture;
+    }
+    var c = document.createElement('canvas');
+    c.width = 48; c.height = 30;
+    var g = c.getContext('2d');
+    g.fillStyle = '#e8e6e0';
+    g.fillRect(0, 0, 48, 30);
+    g.fillStyle = '#1b2a5a';
+    g.fillRect(0, 0, 20, 13);
+    g.strokeStyle = '#e8e6e0';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(0, 0); g.lineTo(20, 13);
+    g.moveTo(20, 0); g.lineTo(0, 13);
+    g.stroke();
+    g.strokeStyle = '#b3202a';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(0, 0); g.lineTo(20, 13);
+    g.moveTo(20, 0); g.lineTo(0, 13);
+    g.stroke();
+    ensignTexture = new THREE.CanvasTexture(c);
+    ensignTexture.needsUpdate = true;
+    return ensignTexture;
+  }
+
+  function makeFlag() {
+    var g = new THREE.Group();
+    g.add(cyl(0.04, 0.05, 3.2, 0x6b4a2f, 0, 1.6, 0, 8));
+    var cloth = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.7, 1.05, 8, 4),
+      new THREE.MeshStandardMaterial({
+        map: getFlagTexture(),
+        side: THREE.DoubleSide,
+        roughness: 1,
+        metalness: 0,
+      })
+    );
+    // Left edge meets the pole; the free edge waves in world.update().
+    cloth.position.set(0.88, 2.55, 0);
+    cloth.castShadow = false;
+    cloth.receiveShadow = false;
+    g.add(cloth);
+    g.userData = { type: 'flag', cloth: cloth };
+    return g;
+  }
+
+
   function makeCannon() {
     var g = new THREE.Group();
-    var bronzeMat = getBronzeMaterial();
-    var ironMat = getIronMaterial();
-    var woodMat = getWoodMaterial(false);
-    var darkWood = getWoodMaterial(true);
-
-    // Recoil pivot: displaced backwards on firing and smoothly sprung back
     var recoilPivot = new THREE.Group();
     g.add(recoilPivot);
 
-    // --- 1. Cannon Barrel (points along -Z, towards the sea) ---
+    var woodMat = new THREE.MeshStandardMaterial({ color: 0x5a4230, roughness: 0.85, metalness: 0.05 });
+    var darkWood = new THREE.MeshStandardMaterial({ color: 0x422d1d, roughness: 0.88, metalness: 0.05 });
+    var bronzeMat = new THREE.MeshStandardMaterial({ color: 0x3b352c, roughness: 0.45, metalness: 0.72 });
+    var ironMat = new THREE.MeshStandardMaterial({ color: 0x222226, roughness: 0.5, metalness: 0.8 });
+
+    // Naval truck carriage
+    recoilPivot.add(new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.35, 1.6), woodMat));
+    recoilPivot.children[0].position.set(0, 0.35, 0);
+    recoilPivot.children[0].castShadow = true;
+
+    // Barrel assembly (points along -Z toward sea)
     var barrelGroup = new THREE.Group();
-    barrelGroup.position.set(0, 0.78, 0);
-
-    // Cascabel button & neck (esfera trasera de puntería)
-    var cascabel = sphere(0.095, bronzeMat, 0, 0, 0.85);
-    barrelGroup.add(cascabel);
-    var cascabelNeck = cyl(0.06, 0.08, 0.12, bronzeMat, 0, 0, 0.75, 10);
-    cascabelNeck.rotation.x = Math.PI / 2;
-    barrelGroup.add(cascabelNeck);
-
-    // Breech & vent field (recámara reforzada)
-    var breech = cyl(0.24, 0.26, 0.45, bronzeMat, 0, 0, 0.5, 14);
-    breech.rotation.x = Math.PI / 2;
-    barrelGroup.add(breech);
-
-    // Touch-hole / vent block on top of breech
-    var ventBlock = box(0.08, 0.05, 0.1, bronzeMat, 0, 0.14, 0.5);
-    barrelGroup.add(ventBlock);
-
-    // First reinforce ring
-    var ring1 = cyl(0.25, 0.25, 0.05, bronzeMat, 0, 0, 0.26, 14);
-    ring1.rotation.x = Math.PI / 2;
-    barrelGroup.add(ring1);
-
-    // Second reinforce with trunnions (muñones de rotación)
-    var reinforce2 = cyl(0.20, 0.23, 0.5, bronzeMat, 0, 0, 0.0, 14);
-    reinforce2.rotation.x = Math.PI / 2;
-    barrelGroup.add(reinforce2);
-
-    // Left and right trunnion cylindrical pins
-    var trunnionL = cyl(0.06, 0.06, 0.62, bronzeMat, 0, 0, 0.05, 10);
-    trunnionL.rotation.z = Math.PI / 2;
-    barrelGroup.add(trunnionL);
-
-    // Chase (cuerpo cónico del cañón)
-    var chase = cyl(0.15, 0.19, 1.25, bronzeMat, 0, 0, -0.78, 14);
-    chase.rotation.x = Math.PI / 2;
-    barrelGroup.add(chase);
-
-    // Muzzle astragal & muzzle swell (boca acampanada)
-    var muzzleSwell = cyl(0.21, 0.16, 0.22, bronzeMat, 0, 0, -1.48, 14);
-    muzzleSwell.rotation.x = Math.PI / 2;
-    barrelGroup.add(muzzleSwell);
-
-    // Dark bore aperture (agujero oscuro de la boca)
-    var boreHole = cyl(0.09, 0.09, 0.08, ironMat, 0, 0, -1.58, 12);
-    boreHole.rotation.x = Math.PI / 2;
-    barrelGroup.add(boreHole);
-
-    // Slight upward elevation angle typical of coastal batteries
+    barrelGroup.position.set(0, 0.75, -0.35);
     barrelGroup.rotation.x = 0.08;
+
+    var cascabel = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), bronzeMat);
+    cascabel.position.set(0, 0, 1.05);
+    var breech = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.23, 0.55, 12), bronzeMat);
+    breech.rotation.x = Math.PI / 2;
+    breech.position.set(0, 0, 0.65);
+    var chase = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.19, 1.45, 12), bronzeMat);
+    chase.rotation.x = Math.PI / 2;
+    chase.position.set(0, 0, -0.35);
+    chase.castShadow = true;
+    var muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.16, 0.18, 12), bronzeMat);
+    muzzle.rotation.x = Math.PI / 2;
+    muzzle.position.set(0, 0, -1.12);
+    var trunnion = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.65, 8), bronzeMat);
+    trunnion.rotation.z = Math.PI / 2;
+    trunnion.position.set(0, 0, 0.25);
+
+    barrelGroup.add(cascabel, breech, chase, muzzle, trunnion);
     recoilPivot.add(barrelGroup);
 
-    // --- 2. Naval Truck Carriage (Cureña naval de madera pesada) ---
-    var carriage = new THREE.Group();
-
-    // Two stepped wooden cheek sides (gualderas)
-    function makeCheek(x) {
-      var cheek = new THREE.Group();
-      cheek.position.x = x;
-      // Stepped blocks
-      cheek.add(box(0.14, 0.45, 1.5, woodMat, 0, 0.35, 0));
-      cheek.add(box(0.14, 0.22, 0.8, woodMat, 0, 0.55, -0.1));
-      // Iron trunnion capsquare strap
-      cheek.add(box(0.16, 0.04, 0.18, ironMat, 0, 0.72, 0.05));
-      // Side iron ringbolt for rope breechings
-      cheek.add(cyl(0.05, 0.05, 0.03, ironMat, x > 0 ? 0.08 : -0.08, 0.38, 0.2, 8));
-      return cheek;
-    }
-    carriage.add(makeCheek(0.32));
-    carriage.add(makeCheek(-0.32));
-
-    // Transom crossbeam & rear bed
-    carriage.add(box(0.55, 0.2, 0.3, darkWood, 0, 0.28, -0.4));
-    carriage.add(box(0.55, 0.18, 0.4, darkWood, 0, 0.28, 0.45));
-
-    // Wooden quoin (cuña de puntería con mango) under breech
-    var quoin = box(0.32, 0.16, 0.35, darkWood, 0, 0.48, 0.45);
-    carriage.add(quoin);
-
-    // Front and rear wooden wheel axles (ejes de cureña)
-    var frontAxle = cyl(0.06, 0.06, 1.05, darkWood, 0, 0.22, -0.42, 8);
-    frontAxle.rotation.z = Math.PI / 2;
-    carriage.add(frontAxle);
-
-    var rearAxle = cyl(0.06, 0.06, 1.05, darkWood, 0, 0.22, 0.42, 8);
-    rearAxle.rotation.z = Math.PI / 2;
-    carriage.add(rearAxle);
-
-    // 4 Solid wooden truck wheels with iron rims and linchpins
+    // Wheels
     function wheel(x, z) {
-      var wGroup = new THREE.Group();
-      wGroup.position.set(x, 0.25, z);
-
-      // Wooden wheel disc
-      var wDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.11, 14), woodMat);
-      wDisc.rotation.z = Math.PI / 2;
-      wDisc.castShadow = true;
-      wGroup.add(wDisc);
-
-      // Iron outer tire hoop
-      var wRim = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.115, 14), ironMat);
-      wRim.rotation.z = Math.PI / 2;
-      wRim.scale.set(1.02, 0.98, 1.02);
-      wGroup.add(wRim);
-
-      // Iron center linchpin hub
-      var hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.15, 8), ironMat);
-      hub.rotation.z = Math.PI / 2;
-      wGroup.add(hub);
-
-      return wGroup;
+      var w = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.36, 0.36, 0.12, 12),
+        darkWood
+      );
+      w.position.set(x, 0.36, z);
+      w.rotation.z = Math.PI / 2;
+      w.castShadow = true;
+      return w;
     }
+    recoilPivot.add(wheel(-0.45, 0.4));
+    recoilPivot.add(wheel(0.45, 0.4));
+    recoilPivot.add(wheel(-0.45, -0.4));
+    recoilPivot.add(wheel(0.45, -0.4));
 
-    carriage.add(wheel(-0.48, -0.42));
-    carriage.add(wheel(0.48, -0.42));
-    carriage.add(wheel(-0.48, 0.42));
-    carriage.add(wheel(0.48, 0.42));
-
-    recoilPivot.add(carriage);
-
-    // Setup userData and recoil trigger/spring updater
     g.userData = {
       type: 'cannon',
       recoilOffset: 0,
-      recoilVelocity: 0,
       recoilPivot: recoilPivot,
       triggerRecoil: function () {
-        this.recoilOffset = 0.58; // Kick back 58 cm along +Z
+        this.recoilOffset = 0.55;
       },
       updateRecoil: function (dt) {
         if (this.recoilOffset > 0) {
-          this.recoilOffset = Math.max(0, this.recoilOffset - dt * 1.6);
+          this.recoilOffset = Math.max(0, this.recoilOffset - (dt || 0.016) * 1.5);
           this.recoilPivot.position.z = this.recoilOffset;
         }
       },
     };
-
     return g;
   }
 
-  // --- Upgraded Chinese Watchtower (望楼) ---
-  // Authentic Qing military watchtower with arched stone base, timber pavilion,
-  // flared hip-and-gable roof (歇山顶 / 飞檐) and red hanging lanterns.
-  function makeWatchtower() {
+  // Garrison Medical Aid Station (Puesto de botiquín; no Three.js lights so lights(scene) stays 2)
+  function makeMedicalStation() {
     var g = new THREE.Group();
-    var stoneMat = getStoneWallMaterial(2, 2);
-    var timberMat = getWoodMaterial(true);
-    var redLacquer = mat(0xa82824, 0.75, 0.05);
-    var tileMat = mat(0x3a3a3a, 0.85, 0.05);
-    var goldFinial = mat(0xd4af37, 0.4, 0.6);
+    var wood = mat(0x6f4e37);
+    var darkWood = mat(0x432918);
+    var whiteCloth = mat(0xf2efe8);
+    var redCross = new THREE.MeshStandardMaterial({ color: 0xc42824, roughness: 0.6 });
+    var herbGlass = new THREE.MeshStandardMaterial({ color: 0x2d7a4f, roughness: 0.25, metalness: 0.15 });
+    var amberGlass = new THREE.MeshStandardMaterial({ color: 0xb87624, roughness: 0.25, metalness: 0.15 });
+    var iron = new THREE.MeshStandardMaterial({ color: 0x272729, roughness: 0.48, metalness: 0.8 });
 
-    // 1. Lower stone bastion
-    var stoneBase = box(4.4, 5.2, 4.4, stoneMat, 0, 2.6, 0);
-    g.add(stoneBase);
-
-    // Arched portal door
-    var door = box(1.4, 2.4, 0.1, timberMat, 0, 1.2, 2.22);
-    g.add(door);
-
-    // Stone balcony platform
-    var balcony = box(4.8, 0.35, 4.8, stoneMat, 0, 5.35, 0);
-    g.add(balcony);
-
-    // Balcony timber perimeter railing
-    function addRailing(x, z, w, d) {
-      g.add(box(w, 0.65, d, timberMat, x, 5.85, z));
-    }
-    addRailing(0, 2.3, 4.6, 0.1);
-    addRailing(0, -2.3, 4.6, 0.1);
-    addRailing(2.3, 0, 0.1, 4.6);
-    addRailing(-2.3, 0, 0.1, 4.6);
-
-    // 2. Upper timber guard pavilion
-    // 4 Corner red lacquer pillars
-    var pillarCoords = [
-      [-1.8, -1.8], [1.8, -1.8], [-1.8, 1.8], [1.8, 1.8]
-    ];
-    for (var p = 0; p < pillarCoords.length; p++) {
-      var col = cyl(0.12, 0.12, 2.6, redLacquer, pillarCoords[p][0], 6.8, pillarCoords[p][1], 8);
-      g.add(col);
-    }
-
-    // Upper room timber walls with observation window slots
-    var upperRoom = box(3.2, 2.4, 3.2, mat(0xcbb189, 0.9, 0), 0, 6.7, 0);
-    g.add(upperRoom);
-
-    // 3. Traditional Chinese Curved Roof (歇山顶 / 飞檐)
-    // Primary roof pyramid with flared eaves
-    var roofBase = new THREE.Mesh(
-      new THREE.ConeGeometry(3.6, 1.8, 4),
-      tileMat
-    );
-    roofBase.position.set(0, 8.8, 0);
-    roofBase.rotation.y = Math.PI / 4;
-    roofBase.castShadow = true;
-    g.add(roofBase);
-
-    // Upturned roof corners (飞檐)
-    for (var c = 0; c < 4; c++) {
-      var angle = (c * Math.PI) / 2 + Math.PI / 4;
-      var cx = Math.cos(angle) * 2.8;
-      var cz = Math.sin(angle) * 2.8;
-      var eaveTip = cone(0.25, 0.7, goldFinial, cx, 8.4, cz, 6);
-      eaveTip.rotation.x = Math.sin(angle) * 0.45;
-      eaveTip.rotation.z = -Math.cos(angle) * 0.45;
-      g.add(eaveTip);
-
-      // Hanging red silk lantern at each corner
-      var lanternGroup = new THREE.Group();
-      lanternGroup.position.set(cx * 0.92, 7.8, cz * 0.92);
-      // Cord
-      lanternGroup.add(cyl(0.015, 0.015, 0.35, mat(0x222222), 0, 0.18, 0, 4));
-      // Red sphere body
-      var lanternBody = sphere(0.24, mat(0xcc292b, 0.6, 0.1), 0, -0.05, 0);
-      lanternBody.scale.set(1, 1.25, 1);
-      lanternGroup.add(lanternBody);
-      // Gold tassel
-      lanternGroup.add(cyl(0.04, 0.02, 0.25, goldFinial, 0, -0.32, 0, 6));
-      g.add(lanternGroup);
-    }
-
-    // Roof peak golden finial
-    var roofPeak = sphere(0.28, goldFinial, 0, 9.8, 0);
-    g.add(roofPeak);
-
-    g.userData = { type: 'watchtower' };
-    return g;
-  }
-
-  // --- Imperial Qing Dragon Flag Pole ---
-  // Waving triangular yellow dragon standard on timber mast.
-  function makeFlagPole(height) {
-    var h = height || 8;
-    var g = new THREE.Group();
-    var timberMat = getWoodMaterial(true);
-    var goldMat = mat(0xd4af37, 0.4, 0.6);
-
-    // Wooden mast
-    var mast = cyl(0.09, 0.13, h, timberMat, 0, h * 0.5, 0, 8);
-    g.add(mast);
-
-    // Masthead finial
-    var finial = sphere(0.18, goldMat, 0, h + 0.1, 0);
-    g.add(finial);
-
-    // Cross yard for halyard
-    var yard = cyl(0.03, 0.03, 1.2, timberMat, 0, h - 0.4, 0, 6);
-    yard.rotation.z = Math.PI / 2;
-    g.add(yard);
-
-    // Triangular dragon flag with wave geometry
-    var flagTex = getQingFlagTexture();
-    var flagMat = new THREE.MeshStandardMaterial({
-      color: 0xf5f5f5,
-      map: flagTex || null,
-      side: THREE.DoubleSide,
-      roughness: 0.85,
-      metalness: 0.02,
+    g.add(box(1.5, 0.09, 0.9, 0x6f4e37, 0, 0.80, 0));
+    [[-0.66, -0.36], [0.66, -0.36], [-0.66, 0.36], [0.66, 0.36]].forEach(function (lc) {
+      g.add(box(0.09, 0.78, 0.09, 0x432918, lc[0], 0.39, lc[1]));
     });
+    g.add(box(0.65, 0.02, 0.94, 0xf2efe8, 0, 0.855, 0));
+    g.add(box(0.08, 0.022, 0.32, 0xc42824, 0, 0.86, 0));
+    g.add(box(0.32, 0.022, 0.08, 0xc42824, 0, 0.86, 0));
 
-    var flagGeo = new THREE.PlaneGeometry(2.4, 1.5, 8, 4);
-    var flagMesh = new THREE.Mesh(flagGeo, flagMat);
-    flagMesh.position.set(1.25, h - 1.1, 0);
-    flagMesh.castShadow = true;
-    g.add(flagMesh);
+    // Medical chest + open lid + cross emblem
+    g.add(box(0.46, 0.24, 0.32, 0xc42824, -0.38, 0.96, 0.02));
+    var lid = box(0.46, 0.05, 0.32, 0xc42824, -0.38, 1.15, -0.14);
+    lid.rotation.x = -1.1;
+    g.add(lid);
+    g.add(box(0.18, 0.02, 0.06, 0xf2efe8, -0.38, 1.09, 0.02));
+    g.add(box(0.06, 0.02, 0.18, 0xf2efe8, -0.38, 1.09, 0.02));
 
-    g.userData = {
-      type: 'flagpole',
-      flagMesh: flagMesh,
-      update: function (time) {
-        if (!flagMesh || !flagMesh.geometry) return;
-        var pos = flagMesh.geometry.attributes.position;
-        if (!pos) return;
-        for (var i = 0; i < pos.count; i++) {
-          var px = pos.getX(i);
-          var wave = Math.sin(px * 3.0 + time * 6.0) * 0.12 * (px / 2.4);
-          pos.setZ(i, wave);
-        }
-        pos.needsUpdate = true;
-      },
-    };
+    // Linen bandage rolls & medicine bottles
+    var roll1 = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.16, 10), whiteCloth);
+    roll1.position.set(0.28, 0.90, 0.14);
+    roll1.rotation.z = Math.PI / 2;
+    var roll2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.15, 10), whiteCloth);
+    roll2.position.set(0.34, 0.90, -0.02);
+    roll2.rotation.z = Math.PI / 2;
+    roll2.rotation.y = 0.4;
+    var b1 = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.19, 8), herbGlass);
+    b1.position.set(0.52, 0.94, -0.18);
+    var b2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 0.15, 8), amberGlass);
+    b2.position.set(0.41, 0.92, -0.22);
+    g.add(roll1, roll2, b1, b2);
 
+    // Pole + emissive green lantern
+    var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 1.7, 8), iron);
+    pole.position.set(-0.68, 0.85, -0.38);
+    var arm = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 0.04), iron);
+    arm.position.set(-0.52, 1.68, -0.38);
+    var lantern = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xffd27a, emissive: 0x3ad97b, emissiveIntensity: 0.75, roughness: 0.35 })
+    );
+    lantern.position.set(-0.36, 1.54, -0.38);
+    g.add(pole, arm, lantern);
+
+    // Healing zone floor disc
+    var zoneRing = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.6, 1.6, 0.02, 24),
+      new THREE.MeshStandardMaterial({
+        color: 0x2ecc71, emissive: 0x1e8449, emissiveIntensity: 0.5,
+        transparent: true, opacity: 0.28, roughness: 0.9,
+      })
+    );
+    zoneRing.position.set(0, 0.03, 0);
+    g.add(zoneRing);
+
+    g.userData = { type: 'medical-station', zoneRing: zoneRing, lantern: lantern, cooldownUntil: 0 };
     return g;
   }
 
-  // --- Tactical Courtyard Props ---
-  // 1. Powder Barrel (Barril de pólvora con aros de hierro)
+  function makeFiringStep(length) {
+    var g = new THREE.Group();
+    var len = length || 4.2;
+    g.add(box(len, 0.26, 1.25, 0x6f4e37, 0, 0.13, 0));
+    g.add(box(len, 0.13, 0.55, 0x4a321d, 0, 0.065, 0.85));
+    g.userData = { type: 'firing-step' };
+    return g;
+  }
+
+  function makeAssaultLadder(height) {
+    var h = height || 2.4;
+    var g = new THREE.Group();
+    g.add(cyl(0.038, 0.045, h, 0xa8925a, -0.32, h * 0.5, 0, 8));
+    g.add(cyl(0.038, 0.045, h, 0xa8925a, 0.32, h * 0.5, 0, 8));
+    var rungs = Math.max(4, Math.floor(h / 0.36));
+    for (var i = 1; i < rungs; i++) {
+      var y = (i / rungs) * h;
+      var rung = cyl(0.024, 0.024, 0.7, 0xa8925a, 0, y, 0, 8);
+      rung.rotation.z = Math.PI / 2;
+      g.add(rung);
+    }
+    g.userData = { type: 'assault-ladder' };
+    return g;
+  }
+
   function makePowderBarrel() {
     var g = new THREE.Group();
-    var wood = getWoodMaterial(false);
-    var iron = getIronMaterial();
-
-    // Staved bulging barrel body
-    var body = cyl(0.32, 0.32, 0.82, wood, 0, 0.41, 0, 12);
+    var body = cyl(0.32, 0.32, 0.82, 0x6f4e37, 0, 0.41, 0, 12);
     body.scale.set(1.15, 1, 1.15);
     g.add(body);
-
-    // 4 Iron hoops (aros de hierro forjado)
-    var hoops = [-0.28, -0.12, 0.12, 0.28];
-    for (var i = 0; i < hoops.length; i++) {
-      var hoop = cyl(0.355, 0.355, 0.04, iron, 0, 0.41 + hoops[i], 0, 12);
+    [-0.28, -0.12, 0.12, 0.28].forEach(function (hy) {
+      var hoop = cyl(0.355, 0.355, 0.04, 0x272729, 0, 0.41 + hy, 0, 12);
       hoop.scale.set(1.16, 1, 1.16);
       g.add(hoop);
-    }
+    });
     g.userData = { type: 'powder-barrel' };
     return g;
   }
 
-  // 2. Cannonball Pyramid Stack (Pirámide de balas de cañón de hierro)
   function makeCannonballStack() {
     var g = new THREE.Group();
-    var iron = getIronMaterial();
-    var wood = getWoodMaterial(true);
     var r = 0.11;
-
-    // Wooden base frame (marco para balas)
-    g.add(box(0.9, 0.08, 0.9, wood, 0, 0.04, 0));
-
-    // Base layer: 3x3 = 9 cannonballs
+    g.add(box(0.9, 0.08, 0.9, 0x432918, 0, 0.04, 0));
     for (var x = -1; x <= 1; x++) {
       for (var z = -1; z <= 1; z++) {
-        g.add(sphere(r, iron, x * r * 2.1, r + 0.04, z * r * 2.1));
+        g.add(sphere(r, 0x272729, x * r * 2.1, r + 0.04, z * r * 2.1));
       }
     }
-    // Second layer: 2x2 = 4 cannonballs
     var y2 = r + 0.04 + r * 1.5;
     for (var x2 = -0.5; x2 <= 0.5; x2 += 1) {
       for (var z2 = -0.5; z2 <= 0.5; z2 += 1) {
-        g.add(sphere(r, iron, x2 * r * 2.1, y2, z2 * r * 2.1));
+        g.add(sphere(r, 0x272729, x2 * r * 2.1, y2, z2 * r * 2.1));
       }
     }
-    // Top cannonball: 1
-    g.add(sphere(r, iron, 0, y2 + r * 1.5, 0));
-
+    g.add(sphere(r, 0x272729, 0, y2 + r * 1.5, 0));
     g.userData = { type: 'cannonball-stack' };
     return g;
   }
 
-  // 3. Sandbag Wall (Trinchera de sacos de arena)
   function makeSandbagWall(length) {
     var g = new THREE.Group();
-    var bagMat = getSandbagMaterial();
     var len = length || 3;
     var count = Math.max(2, Math.floor(len / 0.8));
-
     for (var layer = 0; layer < 3; layer++) {
       var y = layer * 0.22 + 0.12;
       var offset = (layer % 2) * 0.35;
       for (var i = 0; i < count; i++) {
         var x = -len * 0.5 + (i + 0.5) * (len / count) + offset;
-        var bag = box(0.68, 0.22, 0.38, bagMat, x, y, 0);
-        bag.rotation.y = (Math.random() - 0.5) * 0.1;
-        g.add(bag);
+        g.add(box(0.68, 0.22, 0.38, 0xb5976b, x, y, 0));
       }
     }
     g.userData = { type: 'sandbag-wall' };
     return g;
   }
 
-  // 4. Garrison Medical Aid Station (Puesto de botiquín y curación)
-  function makeMedicalStation() {
-    var g = new THREE.Group();
-    var wood = getWoodMaterial(false);
-    var darkWood = getWoodMaterial(true);
-    var whiteCloth = mat(0xf2efe8, 0.88, 0.0);
-    var redCross = mat(0xc42824, 0.6, 0.05);
-    var herbGlass = mat(0x2d7a4f, 0.25, 0.15);
-    var amberGlass = mat(0xb87624, 0.25, 0.15);
-    var iron = getIronMaterial();
-
-    // Wooden field table
-    g.add(box(1.5, 0.09, 0.9, wood, 0, 0.80, 0));
-    var legCoords = [[-0.66, -0.36], [0.66, -0.36], [-0.66, 0.36], [0.66, 0.36]];
-    for (var li = 0; li < legCoords.length; li++) {
-      g.add(box(0.09, 0.78, 0.09, darkWood, legCoords[li][0], 0.39, legCoords[li][1]));
-    }
-    // White-and-crimson field cloth runner across table
-    g.add(box(0.65, 0.02, 0.94, whiteCloth, 0, 0.855, 0));
-    g.add(box(0.08, 0.022, 0.32, redCross, 0, 0.86, 0));
-    g.add(box(0.32, 0.022, 0.08, redCross, 0, 0.86, 0));
-
-    // Red-lacquered medical chest (药箱) with open lid
-    g.add(box(0.46, 0.24, 0.32, redCross, -0.38, 0.96, 0.02));
-    var lid = box(0.46, 0.05, 0.32, redCross, -0.38, 1.15, -0.14);
-    lid.rotation.x = -1.1;
-    g.add(lid);
-    g.add(box(0.18, 0.02, 0.06, whiteCloth, -0.38, 1.09, 0.02));
-    g.add(box(0.06, 0.02, 0.18, whiteCloth, -0.38, 1.09, 0.02));
-
-    // Rolled white linen bandages
-    var roll1 = cyl(0.055, 0.055, 0.16, whiteCloth, 0.28, 0.90, 0.14, 10);
-    roll1.rotation.z = Math.PI / 2;
-    var roll2 = cyl(0.05, 0.05, 0.15, whiteCloth, 0.34, 0.90, -0.02, 10);
-    roll2.rotation.z = Math.PI / 2;
-    roll2.rotation.y = 0.4;
-    g.add(roll1, roll2);
-
-    // Herbal medicine bottles
-    g.add(cyl(0.045, 0.05, 0.19, herbGlass, 0.52, 0.94, -0.18, 8));
-    g.add(cyl(0.04, 0.045, 0.15, amberGlass, 0.41, 0.92, -0.22, 8));
-
-    // Lantern pole and glowing healing lantern
-    g.add(cyl(0.03, 0.04, 1.7, iron, -0.68, 0.85, -0.38, 8));
-    g.add(box(0.36, 0.04, 0.04, iron, -0.52, 1.68, -0.38));
-    var lanternMat = new THREE.MeshStandardMaterial({
-      color: 0xffd27a,
-      emissive: 0x3ad97b,
-      emissiveIntensity: 0.75,
-      roughness: 0.35,
-    });
-    var lantern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), lanternMat);
-    lantern.position.set(-0.36, 1.54, -0.38);
-    g.add(lantern);
-
-    // Healing zone floor ring (1.6 m radius)
-    var zoneGeo = new THREE.CylinderGeometry(1.6, 1.6, 0.02, 24);
-    var zoneMat = new THREE.MeshStandardMaterial({
-      color: 0x2ecc71,
-      emissive: 0x1e8449,
-      emissiveIntensity: 0.5,
-      transparent: true,
-      opacity: 0.28,
-      roughness: 0.9,
-    });
-    var zoneRing = new THREE.Mesh(zoneGeo, zoneMat);
-    zoneRing.position.set(0, 0.03, 0);
-    g.add(zoneRing);
-
-    g.userData = {
-      type: 'medical-station',
-      zoneRing: zoneRing,
-      lantern: lantern,
-      cooldownUntil: 0,
+  function makeFlagPole(height) {
+    var g = makeFlag();
+    if (height && height !== 3.2) g.scale.setScalar(height / 3.2);
+    g.userData.type = 'flagpole';
+    g.userData.update = function (time) {
+      var cloth = this.cloth;
+      if (!cloth || !cloth.geometry || !cloth.geometry.attributes.position) return;
+      var pos = cloth.geometry.attributes.position;
+      for (var vi = 0; vi < pos.count; vi++) {
+        var cx = pos.getX(vi);
+        pos.setZ(vi, Math.sin(cx * 3 + (time || 0) * 4) * 0.12 * (cx / 1.7 + 0.5));
+      }
+      pos.needsUpdate = true;
     };
     return g;
   }
 
-  // 5. Firing Banquette Step (Banqueta de tiro tras el parapeto norte)
-  function makeFiringStep(length) {
-    var g = new THREE.Group();
-    var len = length || 4.2;
-    var wood = getWoodMaterial(false, 2, 1);
-    var darkWood = getWoodMaterial(true);
-
-    // Main raised plank deck (height 0.38 m so player eyes clear the parapet cleanly)
-    g.add(box(len, 0.38, 1.25, wood, 0, 0.19, 0));
-    // Lower back tread step for smooth walk-up
-    g.add(box(len, 0.19, 0.55, darkWood, 0, 0.095, 0.85));
-    // Support beams
-    for (var x = -len * 0.4; x <= len * 0.41; x += len * 0.4) {
-      g.add(box(0.14, 0.40, 1.32, darkWood, x, 0.2, 0));
-    }
-
-    g.userData = { type: 'firing-step' };
-    return g;
-  }
-
-  // 6. Bamboo Assault Ladder (Escala de asalto sobre el parapeto)
-  function makeAssaultLadder(height) {
-    var h = height || 2.6;
-    var g = new THREE.Group();
-    var bamboo = mat(0xa8925a, 0.82, 0.02);
-    var rope = mat(0x6e5332, 0.95, 0.0);
-
-    g.add(cyl(0.038, 0.045, h, bamboo, -0.32, h * 0.5, 0, 8));
-    g.add(cyl(0.038, 0.045, h, bamboo, 0.32, h * 0.5, 0, 8));
-
-    var rungs = Math.max(4, Math.floor(h / 0.36));
-    for (var i = 1; i < rungs; i++) {
-      var y = (i / rungs) * h;
-      var rung = cyl(0.024, 0.024, 0.7, bamboo, 0, y, 0, 8);
-      rung.rotation.z = Math.PI / 2;
-      g.add(rung);
-      g.add(box(0.07, 0.05, 0.07, rope, -0.32, y, 0));
-      g.add(box(0.07, 0.05, 0.07, rope, 0.32, y, 0));
-    }
-
-    g.userData = { type: 'assault-ladder' };
-    return g;
+  function makeWatchtower() {
+    var t = makeTower(4, 7);
+    t.userData.type = 'watchtower';
+    return t;
   }
 
   return {
+    makeSteamer: makeSteamer,
+    makeJunk: makeJunk,
+    makeChainBoom: makeChainBoom,
+    makeFireRaft: makeFireRaft,
+    makeVillage: makeVillage,
+    makeJingal: makeJingal,
+    makeRattanShield: makeRattanShield,
+    makeTower: makeTower,
+    makeWatchtower: makeWatchtower,
+    getBannerTexture: getBannerTexture,
+    getFlagTexture: getFlagTexture,
+    getEnsignTexture: getEnsignTexture,
+    makeFlag: makeFlag,
+    makeFlagPole: makeFlagPole,
     makeQingSoldier: makeQingSoldier,
     makeBritishSoldier: makeBritishSoldier,
     hasBritishModel: hasBritishModel,
@@ -1380,18 +1151,12 @@ var Models = (function () {
     makeShip: makeShip,
     makeFortWall: makeFortWall,
     makeCannon: makeCannon,
-    makeWatchtower: makeWatchtower,
-    makeFlagPole: makeFlagPole,
-    makePowderBarrel: makePowderBarrel,
-    makeCannonballStack: makeCannonballStack,
-    makeSandbagWall: makeSandbagWall,
     makeMedicalStation: makeMedicalStation,
     makeFiringStep: makeFiringStep,
     makeAssaultLadder: makeAssaultLadder,
-    getStoneWallMaterial: getStoneWallMaterial,
-    getWoodMaterial: getWoodMaterial,
-    getBronzeMaterial: getBronzeMaterial,
-    getIronMaterial: getIronMaterial,
+    makePowderBarrel: makePowderBarrel,
+    makeCannonballStack: makeCannonballStack,
+    makeSandbagWall: makeSandbagWall,
   };
 })();
 

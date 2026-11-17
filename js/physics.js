@@ -297,8 +297,9 @@ var GamePhysics = (function () {
       var speed = opts.speed || MUSKET_SPEED;
       var owner = opts.owner === 'enemy' ? 'enemy' : 'player';
       var from = plain(opts.from);
+      var kind = opts.kind || 'musket';
       var proj = {
-        kind: 'musket',
+        kind: kind,
         owner: owner,
         pos: from,
         vel: { x: dir.x * speed, y: dir.y * speed, z: dir.z * speed },
@@ -306,10 +307,38 @@ var GamePhysics = (function () {
         radius: 0.04,
         life: MUSKET_LIFE,
         mask: owner === 'enemy' ? (GROUP.WORLD | GROUP.PLAYER) : (GROUP.WORLD | GROUP.ENEMY),
-        trail: effects && typeof effects.trail === 'function' ? effects.trail(from, 'musket') : null,
+        trail: opts.withTrail === false
+          ? null
+          : (effects && typeof effects.trail === 'function' ? effects.trail(from, kind) : null),
       };
       projectiles.push(proj);
       return proj;
+    }
+
+    function fireShotgun(opts) {
+      var out = [];
+      var count = opts.pellets || 8;
+      var forward = new THREE.Vector3(opts.dir.x, opts.dir.y, opts.dir.z).normalize();
+      var up = Math.abs(forward.y) > 0.99 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      var right = new THREE.Vector3().crossVectors(forward, up).normalize();
+      up.crossVectors(right, forward).normalize();
+      for (var i = 0; i < count; i++) {
+        var radius = Math.tan(opts.spread || 0) * Math.sqrt(Math.random());
+        var angle = Math.random() * Math.PI * 2;
+        var direction = forward.clone()
+          .addScaledVector(right, radius * Math.cos(angle))
+          .addScaledVector(up, radius * Math.sin(angle)).normalize();
+        out.push(fireMusket({
+          from: opts.from,
+          dir: direction,
+          spread: 0,
+          damage: opts.damage,
+          owner: opts.owner,
+          kind: 'shotgun',
+          withTrail: false,
+        }));
+      }
+      return out;
     }
 
     function fireCannon(opts) {
@@ -483,10 +512,10 @@ var GamePhysics = (function () {
 
       if (entry && proj.owner === 'player' && typeof ctx.onEnemyHit === 'function') {
         if (effects && typeof effects.impact === 'function') effects.impact(point, normal, 'flesh');
-        ctx.onEnemyHit(entry.pivot, proj.damage, point, dir, 'musket');
+        ctx.onEnemyHit(entry.pivot, proj.damage, point, dir, proj.kind);
       } else if (body === playerBody && proj.owner === 'enemy' && typeof ctx.onPlayerHit === 'function') {
         if (effects && typeof effects.impact === 'function') effects.impact(point, normal, 'flesh');
-        ctx.onPlayerHit(proj.damage, point, 'musket');
+        ctx.onPlayerHit(proj.damage, point, proj.kind);
       } else {
         var kind = impactKind(point);
         if (effects && typeof effects.impact === 'function') effects.impact(point, normal, kind);
@@ -577,6 +606,7 @@ var GamePhysics = (function () {
       removeBody: removeBody,
       removeEntry: removeEntry,
       fireMusket: fireMusket,
+      fireShotgun: fireShotgun,
       fireCannon: fireCannon,
       spawnDebris: spawnDebris,
       step: step,

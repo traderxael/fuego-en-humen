@@ -19,6 +19,7 @@ var Screens = (function () {
       statWaves: document.getElementById('stat-waves'),
       statScore: document.getElementById('stat-score'),
       toast: document.getElementById('intro-toast'),
+      btnRetry: document.getElementById('btn-retry'),
       briefKicker: document.getElementById('brief-kicker'),
       briefTitle: document.getElementById('brief-title'),
       briefDate: document.getElementById('brief-date'),
@@ -137,6 +138,13 @@ var Screens = (function () {
     var e = cache();
     if (!e) return;
     hideAll();
+    var checkpoint = null;
+    if (typeof CheckpointLogic !== 'undefined' && typeof window !== 'undefined') {
+      try { checkpoint = CheckpointLogic.load(window.localStorage); } catch (error) { checkpoint = null; }
+    }
+    if (e.btnRetry) {
+      e.btnRetry.textContent = checkpoint ? 'Reintentar fase ' + checkpoint.wave : 'Reintentar';
+    }
     if (e.defeatCause) {
       e.defeatCause.textContent = cause === 'soldier'
         ? 'Has caído defendiendo la muralla.'

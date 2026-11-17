@@ -433,6 +433,7 @@ var Enemies = (function () {
     dx /= len;
     dz /= len;
     u.lastHitDir = { x: dx, z: dz };
+    u.lastHitKind = kind;
     u.stagger = Math.max(u.stagger || 0, 0.28);
     if (u.animator) u.animator.playAdditive(clip('hit'), 1);
 

@@ -57,9 +57,15 @@
       kind = fifth || 'musket';
     }
     if (!Enemies.applyHit(enemy, damage, dir, point, kind)) return;
+    // Allied fire kills on its own: no crosshair marker, no hit tick, no score.
+    if (kind === 'ally') return;
     HUD.flashHit();
     if (kind !== 'cannon') sfxCall('hit');
   }
+
+  const allies = (typeof Allies !== 'undefined' && Allies)
+    ? Allies.create({ world: world, physics: physics, effects: effects, sfxCall: sfxCall })
+    : null;
 
   const player = createPlayer(camera, canvas, {
     state: state,
@@ -77,6 +83,7 @@
     onMedkitRestock: function () {
       HUD.showRadio('Puesto médico', 'Vendas y medicina herbal reabastecidas (×3).', 4);
     },
+    canStart: function () { return missionStarted; },
   });
 
   // --- Mission flow ------------------------------------------------------
@@ -119,6 +126,34 @@
 
   // --- Historical beats and radio ---------------------------------------
   const firedBeats = {};
+  // Phase checkpoint: a defeat resumes from the start of the current wave.
+  function checkpointStorage() {
+    try { return (typeof window !== 'undefined') ? window.localStorage : null; } catch (error) { return null; }
+  }
+  function saveCheckpoint() {
+    if (typeof CheckpointLogic === 'undefined') return;
+    CheckpointLogic.save(checkpointStorage(), {
+      wave: state.wave,
+      hp: state.playerHp,
+      fort: state.fortIntegrity,
+      score: state.score || 0,
+    });
+  }
+  function clearCheckpoint() {
+    if (typeof CheckpointLogic === 'undefined') return;
+    CheckpointLogic.clear(checkpointStorage());
+  }
+  function restoreCheckpoint() {
+    if (typeof CheckpointLogic === 'undefined') return false;
+    var checkpoint = CheckpointLogic.load(checkpointStorage());
+    if (!checkpoint) return false;
+    state.wave = checkpoint.wave;
+    state.playerHp = checkpoint.hp;
+    state.fortIntegrity = checkpoint.fort;
+    state.score = checkpoint.score;
+    return true;
+  }
+
   function triggerBeat(id) {
     if (!MISSION || !MISSION.beats) return;
     if (firedBeats[id]) return;
@@ -276,10 +311,16 @@
     HUD.show();
     setPhase(state, 'playing');
     requestPointerLock();
-    if (!enemies.length) Enemies.spawnWave(scene, WAVES[0], enemies, 1);
+    var resumed = restoreCheckpoint();
+    if (!enemies.length) Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
     if (world && typeof world.setAtmosphereForWave === 'function') world.setAtmosphereForWave(state.wave);
-    triggerBeat('landing');
-    playRadio('start');
+    if (state.wave === 1) {
+      triggerBeat('landing');
+      playRadio('start');
+    } else if (resumed) {
+      HUD.showRadio('Punto de control', 'Fase ' + state.wave + ' de ' + WAVES.length + ' · ' + (WAVES[state.wave - 1].phase || ''), 4);
+    }
+    saveCheckpoint();
     refreshSignalPrompt();
     Screens.showIntroToast(waveToastText(state.wave));
     narrateWave(state.wave);
@@ -433,6 +474,15 @@
   }
   window.addEventListener('keydown', confirmCinematic);
   window.addEventListener('mousedown', confirmCinematic);
+  // While a cinematic owns the screen, clicks confirm it but must not reach
+  // the canvas: its click handler requests pointer lock, which would start the
+  // mission before beginMission() (no wave, no checkpoint).
+  window.addEventListener('click', function (ev) {
+    if (typeof Cinematics === 'undefined' || !Cinematics.isActive()) return;
+    ev.stopPropagation();
+    confirmCinematic();
+  }, true);
+
 
   // The static GLB replaces the primitive soldier as soon as it decodes; when
   // the page is opened from file:// the fetch fails and the primitives stay.
@@ -464,10 +514,14 @@
     },
     onEnemyKilled: function (enemy) {
       const u = (enemy && enemy.userData) || {};
-      const base = u.kind === 'artillery' ? (SCORE_CFG.artillery || 250) : (u.score || SCORE_CFG.rifleman || 100);
-      const gained = addScore(base);
-      bumpStreak();
-      refreshSignalPrompt();
+      const friendly = u.lastHitKind === 'ally';
+      if (!friendly) {
+        const base = u.kind === 'artillery' ? (SCORE_CFG.artillery || 250) : (u.score || SCORE_CFG.rifleman || 100);
+        const gained = addScore(base);
+        bumpStreak();
+        refreshSignalPrompt();
+        HUD.showRadio('Parte de bajas', '+' + gained + ' puntos (x' + streak.toFixed(2) + ')', 3);
+      }
       if (u.kind === 'artillery') {
         triggerBeat('artillery');
         if (effects) {
@@ -475,11 +529,10 @@
           effects.addShake(0.25);
         }
         sfxCall('explosion');
-      } else if (u.archetype === 'officer') {
+      } else if (!friendly && u.archetype === 'officer') {
         triggerBeat('officer');
         playRadio('officer');
       }
-      HUD.showRadio('Parte de bajas', '+' + gained + ' puntos (x' + streak.toFixed(2) + ')', 3);
     },
   };
 
@@ -511,6 +564,7 @@
       return;
     }
     if (now === 'victory') {
+      clearCheckpoint();
       HUD.hide();
       hidePauseOverlay();
       exitPointerLockSafe();
@@ -558,6 +612,8 @@
     if (state.phase === 'playing') {
       // 2. Enemy AI -> body velocities + enemy fire.
       Enemies.updateEnemies(dt, player, world, enemyCallbacks);
+      // 2b. Qing garrison picks targets, animates and fires.
+      if (allies) allies.update(dt, player, state.time);
       // 3. Rigid bodies, projectiles, impacts, corpses.
       physics.step(dt, physicsCtx);
       // 4. Particles and camera shake decay.
@@ -581,6 +637,7 @@
             triggerBeat('assault');
             playRadio('wave3');
           }
+          saveCheckpoint();
           refreshSignalPrompt();
         }
       }
@@ -615,6 +672,7 @@
   });
 
   if (DEBUG_MODE) {
+    window.__allies = allies;
     window.__player = player;
     window.__physics = physics;
     window.__effects = effects;

@@ -89,6 +89,16 @@ y abrir `http://localhost:8820`.
 - **Racha**: encadena bajas en pocos segundos para subir el multiplicador de puntuación hasta ×3.
 - **Señales** (`G`): gasta puntos en munición de reserva, reparación de la muralla o un cañonazo de la batería sur. Cada señal solo se puede usar una vez por partida.
 
+## Integración de la campaña con los sistemas de guarnición (2026-11-10)
+
+La base del juego es la **campaña v2** (diez fases, briefing, cinemáticas con fuentes, rig esquelético con IK y viewmodel animado). Sobre ella se han reincorporado los sistemas que faltaban:
+
+- **Guarnición qing combatiente**: ocho soldados con el rig qing (cuatro en la muralla y cuatro patrullando el patio), con escudo de ratán los móviles. Eligen al británico más cercano con línea de visión, apuntan, disparan y se animan con los clips compartidos. Sin cuerpos físicos: no reciben fuego amigo y no alteran el conteo de oleadas. Sus bajas no suman puntuación.
+- **Checkpoint de fase**: al empezar cada fase se guarda vida, integridad del fuerte y puntuación en `localStorage`; al caer, la pantalla de derrota ofrece «Reintentar fase N» y el asalto se reanuda desde ese punto.
+- **Muralla de piedra**: sillería procedural con zócalo, cornisa, almenas, bastiones y puerta terrestre (el parapeto de mar sigue bajo la línea de visión).
+- **Flota y escenario**: HMS Nemesis (vapor de ruedas), juncos de guerra, cadena del Bogue con balsas, balsas incendiarias, aldeas con pagodas, jingales sobre el parapeto, banderines de unidad con el carácter 勇 y pabellones británicos en los veleros.
+- **Corrección de entrada**: durante una cinemática, el clic la confirma pero ya no alcanza el lienzo; antes el pointer-lock iniciaba la misión sin oleada ni checkpoint.
+
 ## Nota histórica
 
 En 1839 el comisionado imperial Lin Zexu ordenó la destrucción del opio acumulado en Humen: miles de cajas fueron arrojadas al mar. Londres respondió con cañones. La Primera Guerra del Opio (1839-1842) terminó con el Tratado de Nankín, que cedió Hong Kong a Inglaterra y abrió cinco puertos chinos al comercio occidental.

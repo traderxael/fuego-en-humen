@@ -485,7 +485,9 @@ var createPlayer = (function () {
     function onLockChange() {
       var locked = typeof document !== 'undefined' && document.pointerLockElement === domElement;
       if (locked) {
-        if (state.phase === 'menu' || state.phase === 'paused') setPhase(state, 'playing');
+        if (state.phase === 'menu' || state.phase === 'paused') {
+          if (typeof hooks.canStart !== 'function' || hooks.canStart()) setPhase(state, 'playing');
+        }
         if (overlay) overlay.style.display = 'none';
       } else {
         for (var k in keys) keys[k] = false;
