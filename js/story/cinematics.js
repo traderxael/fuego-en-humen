@@ -1,22 +1,21 @@
-// Cinematic engine: letterboxed sequences with camera keyframes, subtitles
-// and historical caption cards.
+// Cinematic engine: letterboxed sequences with camera keyframes (pos, look, fov),
+// subtitles, historical caption cards, and shot event callbacks.
 //
 // A sequence is { id, shots: [...] }. A shot is:
 //   {
 //     duration: seconds,
-//     camera:   [ { t, pos: [x,y,z], look: [x,y,z] }, ... ]   (t in 0..1)
+//     camera:   [ { t, pos: [x,y,z], look: [x,y,z], fov?: number }, ... ] (t in 0..1)
 //     caption:  { tag, text, source }   historical card, bottom left
-//     subtitle: { speaker, text }        dialogue, bottom centre
+//     subtitle: { speaker, text }       dialogue, bottom centre
+//     audio?:   'waveHorn' | 'cannon' | 'explosion'
 //     stage:    function(ctx) -> { update(t, dt), dispose() }
 //   }
-//
-// The engine owns the main camera while a sequence runs; the player loop is
-// suspended by the caller.
 //
 // Browser global `Cinematics`; also guarded for Node tooling consistency.
 
 var Cinematics = (function () {
   var active = null;
+  var DEFAULT_FOV = 52;
 
   function easeInOut(u) {
     if (u <= 0) return 0;
@@ -82,6 +81,8 @@ var Cinematics = (function () {
     }
     var span = Math.max(1e-6, b.t - a.t);
     var k = easeInOut((u - a.t) / span);
+    var fovA = a.fov != null ? a.fov : DEFAULT_FOV;
+    var fovB = b.fov != null ? b.fov : fovA;
     return {
       pos: [
         lerp(a.pos[0], b.pos[0], k),
@@ -93,6 +94,7 @@ var Cinematics = (function () {
         lerp(a.look[1], b.look[1], k),
         lerp(a.look[2], b.look[2], k),
       ],
+      fov: lerp(fovA, fovB, k),
     };
   }
 
@@ -103,6 +105,19 @@ var Cinematics = (function () {
     camera.position.set(state.pos[0], state.pos[1], state.pos[2]);
     _look.set(state.look[0], state.look[1], state.look[2]);
     camera.lookAt(_look);
+    if (state.fov != null && typeof camera.fov === 'number' && Math.abs(camera.fov - state.fov) > 1e-4) {
+      camera.fov = state.fov;
+      if (typeof camera.updateProjectionMatrix === 'function') camera.updateProjectionMatrix();
+    }
+  }
+
+  function restoreFov(stateObj) {
+    if (!stateObj || !stateObj.ctx || !stateObj.ctx.camera) return;
+    var cam = stateObj.ctx.camera;
+    if (typeof cam.fov === 'number') {
+      cam.fov = stateObj.savedFov || 75;
+      if (typeof cam.updateProjectionMatrix === 'function') cam.updateProjectionMatrix();
+    }
   }
 
   // --- Sequences ----------------------------------------------------------
@@ -114,51 +129,65 @@ var Cinematics = (function () {
         {
           duration: 7,
           camera: [
-            { t: 0, pos: [0, 7.5, -44], look: [0, 1.2, -12] },
-            { t: 1, pos: [2, 5.0, -30], look: [0, 1.0, -12] },
+            { t: 0, pos: [12, 5.4, -24], look: [0, 1.3, -10], fov: 50 },
+            { t: 1, pos: [-9, 4.0, -21], look: [0, 1.2, -10], fov: 46 },
           ],
           caption: {
             tag: 'Humen · 3 de junio de 1839',
             text: 'Lin Zexu ha ordenado destruir el opio confiscado. En la playa de Humen se abren las cajas: el opio, mezclado con cal y sal y regado con agua de mar, se vierte al mar con la marea baja.',
             source: 'Wikipedia · Destruction of opium at Humen',
           },
+          subtitle: {
+            speaker: 'Comisario Lin Zexu',
+            text: 'Ni una sola caja regresará intacta al mar. Que la cal y la marea borren este veneno de nuestras costas.',
+          },
+          audio: 'waveHorn',
           stage: function (ctx) { return Scenes.opiumDestruction(ctx); },
         },
         {
           duration: 8,
           camera: [
-            { t: 0, pos: [-7, 1.6, -19], look: [3, 0.7, -11] },
-            { t: 1, pos: [5, 2.4, -17], look: [-2, 0.8, -11] },
+            { t: 0, pos: [-7.5, 2.1, -17.8], look: [0, 0.85, -13.5], fov: 44 },
+            { t: 1, pos: [6.8, 2.4, -17.2], look: [0, 0.85, -13.5], fov: 42 },
           ],
           caption: {
             tag: 'Veinte días de fuego',
-            text: 'La operación dura veintités días. El 23 de junio ardieron 19.187 cajas y 2.119 sacos de opio: unas 1.000 toneladas largas. Los comerciantes que lo trajeron miraban desde la orilla.',
+            text: 'La operación dura veintitrés días. El 23 de junio ardieron 19.187 cajas y 2.119 sacos de opio: unas 1.000 toneladas largas. Los comerciantes que lo trajeron miraban desde la orilla.',
             source: 'Wikipedia · Destruction of opium at Humen',
+          },
+          subtitle: {
+            speaker: 'Maestro Xu',
+            text: 'El agua turbia hierve con la cal viva; los obreros remueven el fango antes de abrir la compuerta.',
           },
         },
         {
           duration: 7,
           camera: [
-            { t: 0, pos: [9, 2.6, -3], look: [-3, 1.4, -7] },
-            { t: 1, pos: [-2, 2.2, -1], look: [-6, 1.5, -8] },
+            { t: 0, pos: [-4.6, 2.3, -9.8], look: [0, 1.9, -4.8], fov: 42 },
+            { t: 1, pos: [3.8, 2.5, -9.5], look: [0, 1.85, -4.8], fov: 39 },
           ],
           caption: {
             tag: 'Los testigos',
             text: 'Las autoridades imperiales observan desde la orilla. Londres responde con cañones: el 7 de enero de 1841 los británicos toman Shajiao y Dajiao tras la segunda batalla de Chuenpi, donde destruyen once junks de la flota meridional.',
             source: 'Wikipedia · Humen / First Opium War',
           },
+          subtitle: {
+            speaker: 'Sargento Chen',
+            text: 'Desde el pabellón, el comisario vigiló cada carga. Meses después respondieron los barcos de hierro.',
+          },
         },
         {
           duration: 6,
           camera: [
-            { t: 0, pos: [0, 2.4, -8], look: [0, 1.2, -58] },
-            { t: 1, pos: [0, 3.2, -14], look: [0, 1.0, -64] },
+            { t: 0, pos: [0, 2.8, -20], look: [0, 1.4, -60], fov: 48 },
+            { t: 1, pos: [2, 4.4, -32], look: [0, 1.2, -66], fov: 54 },
           ],
           caption: {
             tag: 'Dos años después',
-            text: 'Veinte meses y veintités días separan la destrucción del opio del asalto de Humen. Esta partida transcurre en la segunda.',
+            text: 'Veinte meses y veintitrés días separan la destrucción del opio del asalto de Humen. Esta partida transcurre en la segunda.',
             source: 'Wikipedia · First Opium War',
           },
+          audio: 'cannon',
         },
       ],
     },
@@ -170,27 +199,37 @@ var Cinematics = (function () {
         {
           duration: 7,
           camera: [
-            { t: 0, pos: [-13, 3.4, -18], look: [2, 3.0, -50] },
-            { t: 1, pos: [-6, 2.6, -26], look: [0, 2.4, -56] },
+            { t: 0, pos: [-12, 5.6, -14], look: [0, 2.6, -38], fov: 54 },
+            { t: 1, pos: [8, 4.3, -20], look: [0, 2.4, -40], fov: 48 },
           ],
           caption: {
             tag: '23 de febrero de 1841',
             text: 'La escuadra entra en la bocana. Doce navíos británicos contra treinta junks chinos, dos mil hombres, más de quinientas piezas y tres fortalezas.',
             source: 'Wikipedia · Battle of the Bogue',
           },
+          subtitle: {
+            speaker: 'Vigía de Anunghoy',
+            text: '¡Vela y humo en la garganta del río! El vapor de hierro embiste la cadena del Bogue.',
+          },
+          audio: 'waveHorn',
           stage: function (ctx) { return Scenes.squadronApproach(ctx); },
         },
         {
           duration: 7,
           camera: [
-            { t: 0, pos: [11, 2.2, -44], look: [-3, 3.2, -68] },
-            { t: 1, pos: [4, 4.5, -58], look: [-6, 3.0, -76] },
+            { t: 0, pos: [-8.5, 2.5, -31], look: [0, 2.5, -38], fov: 46 },
+            { t: 1, pos: [-6.0, 3.8, -44], look: [0, 2.6, -36], fov: 44 },
           ],
           caption: {
             tag: 'El paso posterior',
             text: 'El capitán Herbert y el commissioner Elliot navegan en el Nemesis hacia la espalda de Anunghoy con las pinazas del Calliope, Samarang, Herald y Alligator. Se topan con una batería enmascarada de veinte cañones: la toman y la inutilizan. No hay bajas británicas; Herbert calcula veinte o treinta chinos muertos.',
             source: 'Wikipedia · Battle of the Bogue',
           },
+          subtitle: {
+            speaker: 'Comandante Guan Tianpei',
+            text: 'Sus ruedas remontan la corriente sin viento. ¡Asegurad la batería de retaguardia!',
+          },
+          audio: 'cannon',
         },
       ],
     },
@@ -202,38 +241,52 @@ var Cinematics = (function () {
         {
           duration: 8,
           camera: [
-            { t: 0, pos: [2, 1.8, 14], look: [0, 3.0, 1] },
-            { t: 1, pos: [-6, 2.6, 9], look: [-1, 3.4, 0] },
+            { t: 0, pos: [2.5, 2.0, 13], look: [0, 2.4, 0], fov: 52 },
+            { t: 1, pos: [-4.5, 2.6, 8.5], look: [0, 2.4, 0], fov: 46 },
           ],
           caption: {
             tag: '26 de febrero de 1841 · 13:20',
             text: 'Tras el bombardeo, Senhouse desembarca en la batería sur con unos 300 Royal Marines y marineros. A la 13:30, las fortificaciones están tomadas.',
             source: 'Wikipedia · Battle of the Bogue',
           },
+          subtitle: {
+            speaker: 'Sargento Chen',
+            text: '¡Las hojas del portón ceden bajo los hachazos! ¡Cerrad la brecha en la puerta norte!',
+          },
+          audio: 'cannon',
           stage: function (ctx) { return Scenes.rearAssault(ctx); },
         },
         {
           duration: 8,
           camera: [
-            { t: 0, pos: [-13, 5.4, 11], look: [1, 3.2, 0] },
-            { t: 1, pos: [-4, 6.4, 8], look: [3, 3.0, -1] },
+            { t: 0, pos: [-13, 5.2, 10], look: [-2, 3.4, 0.5], fov: 48 },
+            { t: 1, pos: [-4.5, 6.2, 7.5], look: [-1, 3.6, 0.2], fov: 45 },
           ],
           caption: {
             tag: 'La escala',
             text: 'Bajo el mayor Thomas Simson Pratt desembarcan 1.037 hombres por la espalda de la fortaleza: los regimientos 26 y 49, el 37.º de Madrás, los Voluntarios de Bengala y los Royal Marines. El mayor Johnstone escala, el capitán Ellis fuerza la puerta.',
             source: 'Wikipedia · Battle of the Bogue / London Gazette · despacho del mayor E. L. Pratt',
           },
+          subtitle: {
+            speaker: 'Maestro Xu',
+            text: 'Apoyan las escalas de bambú contra el granito mientras las balas barren el parapeto.',
+          },
+          audio: 'explosion',
         },
         {
           duration: 6,
           camera: [
-            { t: 0, pos: [0, 4.2, 6], look: [0, 4.4, -1] },
-            { t: 1, pos: [0, 3.4, 4], look: [0, 4.2, -1] },
+            { t: 0, pos: [-1.8, 5.4, 4.2], look: [0, 5.3, -0.8], fov: 40 },
+            { t: 1, pos: [1.2, 5.5, 3.2], look: [0, 5.3, -0.8], fov: 36 },
           ],
           caption: {
             tag: 'La guarnición',
             text: '关天培 sigue en su puesto de tiro. Un soldado le pide que se retire; se niega, entrega su sello a otro para que llegue al emperador y cae allí mismo, en el fuego.',
             source: 'Wikipedia · Guan Tianpei',
+          },
+          subtitle: {
+            speaker: 'Almirante Guan Tianpei',
+            text: 'Lleva mi sello al emperador. Yo juré guardar estas baterías con mi vida; no daré un paso atrás.',
           },
         },
       ],
@@ -246,38 +299,51 @@ var Cinematics = (function () {
         {
           duration: 8,
           camera: [
-            { t: 0, pos: [0, 2.4, 17], look: [0, 3.6, 0] },
-            { t: 1, pos: [6, 3.2, 12], look: [-2, 3.4, 0] },
+            { t: 0, pos: [-1.5, 2.5, 16], look: [-1.5, 2.4, 6.5], fov: 50 },
+            { t: 1, pos: [5.5, 3.0, 13], look: [-1.5, 2.4, 6.5], fov: 44 },
           ],
           caption: {
             tag: 'La tarde del 26 de febrero',
             text: 'Se capturaron 339 piezas de artillería, 167 de ellas en Wangtong. Cinco ingleses heridos y mil trescientos chinos rendidos: esa es la cuenta del día.',
             source: 'Wikipedia · Battle of the Bogue',
           },
+          subtitle: {
+            speaker: 'Maestro Xu',
+            text: 'Cañones de bronce clavados sobre sus cureñas rotas; la campana de Humen enmudece bajo otro pabellón.',
+          },
+          audio: 'cannon',
           stage: function (ctx) { return Scenes.theFall(ctx); },
         },
         {
           duration: 8,
           camera: [
-            { t: 0, pos: [-16, 5.5, -22], look: [0, 3.0, 2] },
-            { t: 1, pos: [-6, 4.2, -14], look: [0, 3.2, 1] },
+            { t: 0, pos: [3.2, 2.8, 10.5], look: [-2.2, 4.8, -2.0], fov: 44 },
+            { t: 1, pos: [-4.5, 6.4, 9.0], look: [-2.2, 4.8, -2.0], fov: 48 },
           ],
           caption: {
             tag: 'Un saludo de minuto',
             text: 'Al día siguiente, la familia del almirante Guan Tianpei reclama su cuerpo y el Blenheim lo despide con un saludo de minuto. Tres años después, la campana que Senhouse capturó en Humen acaba en la iglesia de St Mary’s, en Gosforth (Northumberland), donada por su viuda.',
             source: 'Wikipedia · Guan Tianpei / Battle of the Bogue',
           },
+          subtitle: {
+            speaker: 'Parte naval del HMS Blenheim',
+            text: 'Salva de honor minuto a minuto por el valiente almirante Guan Tianpei, caído frente a su batería.',
+          },
         },
         {
           duration: 8,
           camera: [
-            { t: 0, pos: [0, 3.0, 10], look: [0, 2.6, -30] },
-            { t: 1, pos: [0, 3.6, 4], look: [0, 2.4, -40] },
+            { t: 0, pos: [4, 4.8, 10], look: [0, 2.2, -32], fov: 50 },
+            { t: 1, pos: [0, 6.5, 14], look: [0, 2.2, -36], fov: 58 },
           ],
           caption: {
             tag: 'Lo que vino después',
             text: 'Humen cayó. Canton se rindió en mayo de 1841 por seis millones de dólares. El Tratado de Nankín, en 1842, cedió Hong Kong a Inglaterra y abrió cinco puertos al comercio occidental.',
             source: 'Wikipedia · First Opium War / Treaty of Nanking',
+          },
+          subtitle: {
+            speaker: 'Maestro Xu',
+            text: 'Las murallas de Humen cayeron en un día, pero su memoria permaneció intacta en la piedra.',
           },
         },
       ],
@@ -289,9 +355,11 @@ var Cinematics = (function () {
     var def = SEQUENCES[id];
     if (!def) return false;
     stop();
+    var savedFov = (ctx && ctx.camera && typeof ctx.camera.fov === 'number') ? ctx.camera.fov : 75;
     active = {
       def: def,
       ctx: ctx || {},
+      savedFov: savedFov,
       shotIndex: -1,
       shotTime: 0,
       stage: null,
@@ -322,12 +390,19 @@ var Cinematics = (function () {
         active.ctx.scene.add(active.stage.group);
       }
     }
+    // Apply initial camera pose immediately for t=0 so frame 0 renders accurately.
+    applyCamera(active.ctx.camera, cameraState(shot, 0));
+    if (active.ctx && typeof active.ctx.onShot === 'function') {
+      active.ctx.onShot(shot, active.shotIndex);
+    }
   }
 
   function finish() {
-    var ctx = active ? active.ctx : null;
-    if (active && active.stage && active.stage.dispose) active.stage.dispose();
+    var prev = active;
+    var ctx = prev ? prev.ctx : null;
+    if (prev && prev.stage && prev.stage.dispose) prev.stage.dispose();
     active = null;
+    restoreFov(prev);
     showCaption(null);
     showSubtitle(null);
     setOverlay(false);
@@ -336,8 +411,10 @@ var Cinematics = (function () {
 
   function stop() {
     if (!active) return;
-    if (active.stage && active.stage.dispose) active.stage.dispose();
+    var prev = active;
+    if (prev.stage && prev.stage.dispose) prev.stage.dispose();
     active = null;
+    restoreFov(prev);
     showCaption(null);
     showSubtitle(null);
     setOverlay(false);

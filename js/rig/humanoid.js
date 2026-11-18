@@ -1,4 +1,4 @@
-﻿// Procedural skeletal rig for the game's soldiers.
+// Procedural skeletal rig for the game's soldiers.
 //
 // Everything is generated in code: the bone hierarchy, the skinned geometry
 // and the skin weights. No external model files, so the game keeps working

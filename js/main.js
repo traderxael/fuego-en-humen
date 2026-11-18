@@ -126,6 +126,7 @@
 
   // --- Historical beats and radio ---------------------------------------
   const firedBeats = {};
+  const seenCinematics = {};
   // Phase checkpoint: a defeat resumes from the start of the current wave.
   function checkpointStorage() {
     try { return (typeof window !== 'undefined') ? window.localStorage : null; } catch (error) { return null; }
@@ -292,6 +293,13 @@
       effects: effects,
       waitForInput: !!opts.waitForInput,
       continueText: opts.continueText,
+      onShot: function (shot) {
+        if (shot && shot.audio) sfxCall(shot.audio);
+        var spoken = (shot && shot.subtitle && shot.subtitle.text)
+          ? shot.subtitle.text
+          : (shot && shot.caption && shot.caption.text);
+        if (spoken) narrate(spoken);
+      },
       onEnd: function () {
         setWorldVisible(true);
         setViewmodelVisible(true);
@@ -418,6 +426,27 @@
     });
   }
 
+  const cineReelButtons = document.querySelectorAll('.cine-reel-btn[data-cine]');
+  for (var cr = 0; cr < cineReelButtons.length; cr++) {
+    (function (btn) {
+      btn.addEventListener('click', function (ev) {
+        if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+        var cineId = btn.getAttribute('data-cine');
+        if (!cineId) return;
+        sfxCall('unlock');
+        Screens.hideBriefing();
+        playCinematic(cineId, {
+          waitForInput: true,
+          continueText: 'Pulsa para volver al informe',
+          onEnd: function () {
+            if (MISSION) Screens.showBriefing(MISSION);
+            else Screens.showMenu();
+          },
+        });
+      });
+    })(cineReelButtons[cr]);
+  }
+
   const btnMusic = document.getElementById('btn-music');
   function syncMusicButton() {
     if (!btnMusic) return;
@@ -484,8 +513,10 @@
   }, true);
 
 
-  // The static GLB replaces the primitive soldier as soon as it decodes; when
-  // the page is opened from file:// the fetch fails and the primitives stay.
+  // Preload Blender 3D cinematic sets + static rigged soldier in background.
+  if (typeof Scenes !== 'undefined' && typeof Scenes.preloadModels === 'function') {
+    Scenes.preloadModels();
+  }
   Models.loadBritishSoldierModel('assets/models/soldado-britanico-1841-rigged.glb', function () {
     Enemies.refreshSoldierVisuals(enemies);
   });
@@ -629,9 +660,6 @@
         if (state.phase === 'playing' && state.wave !== prevWave) {
           Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
           if (world && typeof world.setAtmosphereForWave === 'function') world.setAtmosphereForWave(state.wave);
-          playWaveHorn();
-          Screens.showIntroToast(waveToastText(state.wave));
-          narrateWave(state.wave);
           if (state.wave === 2) triggerBeat('artillery');
           if (state.wave === 3) {
             triggerBeat('assault');
@@ -639,6 +667,28 @@
           }
           saveCheckpoint();
           refreshSignalPrompt();
+
+          var midCine = state.wave === 3 ? 'humen-squadron' : (state.wave === 7 ? 'humen-assault' : null);
+          if (midCine && !seenCinematics[midCine]) {
+            seenCinematics[midCine] = true;
+            setPhase(state, 'intermission');
+            playCinematic(midCine, {
+              waitForInput: true,
+              continueText: 'Pulsa para volver a la muralla',
+              onEnd: function () {
+                setPhase(state, 'playing');
+                HUD.show();
+                requestPointerLock();
+                playWaveHorn();
+                Screens.showIntroToast(waveToastText(state.wave));
+                narrateWave(state.wave);
+              },
+            });
+          } else {
+            playWaveHorn();
+            Screens.showIntroToast(waveToastText(state.wave));
+            narrateWave(state.wave);
+          }
         }
       }
 

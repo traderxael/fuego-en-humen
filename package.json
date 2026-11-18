@@ -5,7 +5,7 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "test": "node --test tests/logic.test.js tests/physics.test.js tests/physics-world.test.js tests/enemies.test.js tests/rig.test.js tests/allies.test.js tests/ally.test.js tests/checkpoint.test.js tests/wall.test.js tests/historical-models.test.js tests/models.test.js",
+    "test": "node --test tests/logic.test.js tests/physics.test.js tests/physics-world.test.js tests/enemies.test.js tests/rig.test.js tests/allies.test.js tests/ally.test.js tests/checkpoint.test.js tests/wall.test.js tests/historical-models.test.js tests/models.test.js tests/cinematics.test.js",
     "serve": "python -m http.server 8820"
   },
   "engines": {

@@ -4,12 +4,12 @@
 var logicConfig = (typeof module !== 'undefined' && module.exports)
   ? require('./config')
   : {
-      PLAYER_HP: PLAYER_HP,
-      FORT_INTEGRITY: FORT_INTEGRITY,
-      WEAPONS: WEAPONS,
-      WAVES: WAVES,
-      MEDKIT: (typeof MEDKIT !== 'undefined' ? MEDKIT : null),
-    };
+    PLAYER_HP: PLAYER_HP,
+    FORT_INTEGRITY: FORT_INTEGRITY,
+    WEAPONS: WEAPONS,
+    WAVES: WAVES,
+    MEDKIT: (typeof MEDKIT !== 'undefined' ? MEDKIT : null),
+  };
 
 var LEGAL_TRANSITIONS = {
   menu: ['playing'],
