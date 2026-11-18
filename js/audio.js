@@ -20,15 +20,24 @@ var sfx = (function () {
 
   // --- Music: "Al otro lado del río" (assets/audio/al_otro_lado_del_rio.mp3) ---
   var MUSIC_URL = 'assets/audio/al_otro_lado_del_rio.mp3';
-  var MUSIC_LEVEL = 0.35;
+  var MUSIC_LEVEL = 0.32;
   var bgMusic = null;
   var musicStarted = false;
   var musicMuted = false;
+  var musicDucked = false;
 
+  function syncMusicVol() {
+    if (!bgMusic) return;
+    bgMusic.volume = musicMuted ? 0 : (musicDucked ? Math.min(MUSIC_LEVEL, 0.11) : MUSIC_LEVEL);
+  }
+  function duckMusic(on) {
+    musicDucked = !!on;
+    try { syncMusicVol(); } catch (e) { }
+  }
   function music() {
     if (musicMuted) return bgMusic;
     if (musicStarted) {
-      if (bgMusic && bgMusic.paused) { try { bgMusic.play(); } catch (e) { } }
+      if (bgMusic && bgMusic.paused) { try { syncMusicVol(); bgMusic.play(); } catch (e) { } }
       return bgMusic;
     }
     if (typeof window === 'undefined' || typeof window.Audio !== 'function') return null;
@@ -36,7 +45,7 @@ var sfx = (function () {
       musicStarted = true;
       bgMusic = new window.Audio(MUSIC_URL);
       bgMusic.loop = true;
-      bgMusic.volume = musicMuted ? 0 : MUSIC_LEVEL;
+      syncMusicVol();
       bgMusic.preload = 'auto';
       var p = bgMusic.play();
       if (p && typeof p.catch === 'function') p.catch(function () { });
@@ -46,9 +55,9 @@ var sfx = (function () {
     return bgMusic;
   }
   function stopMusic() { try { if (bgMusic) bgMusic.pause(); } catch (e) { } }
-  function setMusicVolume(v) { try { var n = Number(v); if (!Number.isFinite(n)) return; MUSIC_LEVEL = Math.max(0, Math.min(1, n)); if (bgMusic) bgMusic.volume = musicMuted ? 0 : MUSIC_LEVEL; } catch (e) { } }
+  function setMusicVolume(v) { try { var n = Number(v); if (!Number.isFinite(n)) return; MUSIC_LEVEL = Math.max(0, Math.min(1, n)); syncMusicVol(); } catch (e) { } }
   function isMuted() { return !!musicMuted; }
-  function toggleMusic() { musicMuted = !musicMuted; try { if (typeof localStorage !== 'undefined') localStorage.setItem('fuego-music-muted', musicMuted ? '1' : '0'); } catch (e) { } if (!bgMusic) return musicMuted ? null : music(); try { if (musicMuted) bgMusic.pause(); else { bgMusic.volume = MUSIC_LEVEL; bgMusic.play(); } } catch (e) { } return bgMusic; }
+  function toggleMusic() { musicMuted = !musicMuted; try { if (typeof localStorage !== 'undefined') localStorage.setItem('fuego-music-muted', musicMuted ? '1' : '0'); } catch (e) { } if (!bgMusic) return musicMuted ? null : music(); try { if (musicMuted) bgMusic.pause(); else { syncMusicVol(); bgMusic.play(); } } catch (e) { } return bgMusic; }
   function setMuted(v) { var want = v === true; if (want === musicMuted) return; toggleMusic(); }
 
   function audioCtor() {
@@ -346,6 +355,7 @@ var sfx = (function () {
     music: music,
     stopMusic: stopMusic,
     setMusicVolume: setMusicVolume,
+    duckMusic: duckMusic,
     toggleMusic: toggleMusic,
     isMuted: isMuted,
     setMuted: setMuted,

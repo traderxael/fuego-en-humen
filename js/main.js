@@ -163,6 +163,9 @@
       var beat = MISSION.beats[i];
       if (beat.id !== id) continue;
       HUD.showBeat(beat, 11);
+      if (typeof Cinematics === 'undefined' || !Cinematics.isActive()) {
+        narrate(beat.text, 'beat-' + id, { queue: true });
+      }
       var radio = radioFor(id);
       if (radio) HUD.showRadio(radio.speaker, radio.text, 7);
       return;
@@ -179,7 +182,12 @@
 
   function playRadio(id) {
     var radio = radioFor(id);
-    if (radio) HUD.showRadio(radio.speaker, radio.text, 7);
+    if (radio) {
+      HUD.showRadio(radio.speaker, radio.text, 7);
+      if (id === 'lowFort' && (typeof Cinematics === 'undefined' || !Cinematics.isActive())) {
+        narrate(radio.text, 'radio-lowfort', { queue: true });
+      }
+    }
   }
 
   // --- Scoring -----------------------------------------------------------
@@ -295,12 +303,13 @@
       continueText: opts.continueText,
       onShot: function (shot) {
         if (shot && shot.audio) sfxCall(shot.audio);
-        var spoken = (shot && shot.subtitle && shot.subtitle.text)
-          ? shot.subtitle.text
-          : (shot && shot.caption && shot.caption.text);
-        if (spoken) narrate(spoken);
+        var spoken = (shot && shot.narration)
+          || (shot && shot.subtitle && shot.subtitle.text)
+          || (shot && shot.caption && shot.caption.text);
+        if (spoken || (shot && shot.voiceKey)) narrate(spoken, shot ? shot.voiceKey : null);
       },
       onEnd: function () {
+        try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.stop === 'function') Voice.stop(); } catch (e) {}
         setWorldVisible(true);
         setViewmodelVisible(true);
         if (opts.onEnd) opts.onEnd();
@@ -322,16 +331,16 @@
     var resumed = restoreCheckpoint();
     if (!enemies.length) Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
     if (world && typeof world.setAtmosphereForWave === 'function') world.setAtmosphereForWave(state.wave);
+    saveCheckpoint();
+    refreshSignalPrompt();
+    Screens.showIntroToast(waveToastText(state.wave));
+    narrateWave(state.wave);
     if (state.wave === 1) {
       triggerBeat('landing');
       playRadio('start');
     } else if (resumed) {
       HUD.showRadio('Punto de control', 'Fase ' + state.wave + ' de ' + WAVES.length + ' · ' + (WAVES[state.wave - 1].phase || ''), 4);
     }
-    saveCheckpoint();
-    refreshSignalPrompt();
-    Screens.showIntroToast(waveToastText(state.wave));
-    narrateWave(state.wave);
   }
 
   // Wave horn: exactly once per wave.
@@ -354,15 +363,22 @@
   }
 
   // Narrator voice (js/voice.js + js/dialogues.js narrator): Maestro Xu.
-  // Best-effort, silent no-op when speechSynthesis is unavailable.
-  function narrate(text) {
-    if (!text) return;
+  // Plays bundled neural Spanish MP3 tracks with Web Speech API fallback.
+  function narrate(text, clipKey, extraOpts) {
+    if (!text && !clipKey) return;
     try {
       if (typeof Voice !== 'undefined' && Voice) {
-        if (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.tts) {
-          Voice.speak(text, { narratorTts: DIALOGUES.narrator.tts });
+        var opts = Object.assign(
+          {},
+          (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.tts)
+            ? { narratorTts: DIALOGUES.narrator.tts }
+            : {},
+          extraOpts || {}
+        );
+        if (clipKey && typeof Voice.playClip === 'function') {
+          Voice.playClip(clipKey, text, opts);
         } else {
-          Voice.speak(text);
+          Voice.speak(text, opts);
         }
       }
     } catch (e) { }
@@ -370,35 +386,47 @@
   function narrateWave(w) {
     try {
       if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateWave === 'function') {
-        narrate(DIALOGUES.narrateWave(w));
+        narrate(DIALOGUES.narrateWave(w), 'wave-' + w);
       }
     } catch (e) { }
   }
   function narrateBriefing() {
     try {
       if (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.lines) {
-        narrate(DIALOGUES.narrator.lines.briefing);
+        narrate(DIALOGUES.narrator.lines.briefing, 'briefing');
       }
     } catch (e) { }
   }
   function narrateEnd(moment) {
     try {
       if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateEnd === 'function') {
-        narrate(DIALOGUES.narrateEnd(moment));
+        var endKey = moment === 'victory'
+          ? 'end-victory'
+          : (moment === 'soldier' ? 'end-soldier' : (moment === 'fort' ? 'end-fort' : null));
+        narrate(DIALOGUES.narrateEnd(moment), endKey);
       }
     } catch (e) { }
+  }
+
+  function unlockVoiceGesture() {
+    try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.unlock === 'function') Voice.unlock(); } catch (e) { }
   }
 
   const btnPlay = document.getElementById('btn-play');
   if (btnPlay) {
     btnPlay.addEventListener('click', function () {
       sfxCall('unlock'); // AudioContext must be created/resumed inside this gesture
+      unlockVoiceGesture();
       sfxCall('ambientSea');
       sfxCall('music'); // "Al otro lado del río" — assets/audio/al_otro_lado_del_rio.mp3
       Screens.hideMenu();
       hidePauseOverlay();
-      if (MISSION) Screens.showBriefing(MISSION);
-      else beginMission();
+      if (MISSION) {
+        Screens.showBriefing(MISSION);
+        narrateBriefing();
+      } else {
+        beginMission();
+      }
     });
   }
 
@@ -406,6 +434,7 @@
   if (btnDeploy) {
     btnDeploy.addEventListener('click', function () {
       sfxCall('unlock');
+      unlockVoiceGesture();
       Screens.hideBriefing();
       // The historical prologue, then the wall.
       playCinematic('humen-1839', {
@@ -421,6 +450,7 @@
   const btnBack = document.getElementById('btn-back');
   if (btnBack) {
     btnBack.addEventListener('click', function () {
+      try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.stop === 'function') Voice.stop(); } catch (e) { }
       Screens.hideBriefing();
       Screens.showMenu();
     });
@@ -434,6 +464,7 @@
         var cineId = btn.getAttribute('data-cine');
         if (!cineId) return;
         sfxCall('unlock');
+        unlockVoiceGesture();
         Screens.hideBriefing();
         playCinematic(cineId, {
           waitForInput: true,
@@ -625,13 +656,13 @@
       hidePauseOverlay();
       exitPointerLockSafe();
       sfxCall('victory');
-      narrateEnd('victory');
       // The honest ending: the fort falls on 26 February 1841.
       playCinematic('humen-fall', {
         waitForInput: true,
         continueText: 'Pulsa para cerrar el parte',
         onEnd: function () {
           Screens.showVictory({ wavesRepelled: WAVES.length, score: state.score || 0 });
+          narrateEnd('victory');
         },
       });
       return;
@@ -686,10 +717,7 @@
           Enemies.spawnWave(scene, WAVES[state.wave - 1], enemies, state.wave);
           if (world && typeof world.setAtmosphereForWave === 'function') world.setAtmosphereForWave(state.wave);
           if (state.wave === 2) triggerBeat('artillery');
-          if (state.wave === 3) {
-            triggerBeat('assault');
-            playRadio('wave3');
-          }
+          if (state.wave === 3) playRadio('wave3');
           saveCheckpoint();
           refreshSignalPrompt();
 
@@ -707,6 +735,7 @@
                 playWaveHorn();
                 Screens.showIntroToast(waveToastText(state.wave));
                 narrateWave(state.wave);
+                if (state.wave === 7) triggerBeat('assault');
               },
             });
           } else {

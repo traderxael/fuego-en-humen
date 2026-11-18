@@ -160,7 +160,7 @@ var Cinematics = (function () {
       handheld: false,
       shots: [
         {
-          duration: 7,
+          duration: 16.5,
           camera: [
             { t: 0, pos: [12, 5.4, -24], look: [0, 1.3, -10], fov: 50 },
             { t: 1, pos: [-9, 4.0, -21], look: [0, 1.2, -10], fov: 46 },
@@ -174,11 +174,13 @@ var Cinematics = (function () {
             speaker: 'Comisario Lin Zexu',
             text: 'Ni una sola caja regresará intacta al mar. Que la cal y la marea borren este veneno de nuestras costas.',
           },
+          voiceKey: 'cine-1839-0',
+          narration: 'Tres de junio de mil ochocientos treinta y nueve. Lin Zexu ordena abrir las cajas en la playa de Humen. Ni una sola caja regresará intacta al mar; que la cal viva y la marea borren este veneno de nuestras costas.',
           audio: 'waveHorn',
           stage: function (ctx) { return Scenes.opiumDestruction(ctx); },
         },
         {
-          duration: 8,
+          duration: 14.5,
           camera: [
             { t: 0, pos: [-7.5, 2.1, -17.8], look: [0, 0.85, -13.5], fov: 44 },
             { t: 1, pos: [6.8, 2.4, -17.2], look: [0, 0.85, -13.5], fov: 42 },
@@ -192,9 +194,11 @@ var Cinematics = (function () {
             speaker: 'Maestro Xu',
             text: 'El agua turbia hierve con la cal viva; los obreros remueven las tres fosas antes de abrir la compuerta.',
           },
+          voiceKey: 'cine-1839-1',
+          narration: 'Durante veintitrés días, el opio mezclado con cal y sal se disuelve en las tres fosas de piedra hasta la marea baja. Más de mil toneladas ardieron y se hundieron ante la mirada de los comerciantes extranjeros.',
         },
         {
-          duration: 7,
+          duration: 11.8,
           camera: [
             { t: 0, pos: [-4.6, 2.3, -9.8], look: [0, 1.9, -4.8], fov: 42 },
             { t: 1, pos: [3.8, 2.5, -9.5], look: [0, 1.85, -4.8], fov: 39 },
@@ -208,9 +212,11 @@ var Cinematics = (function () {
             speaker: 'Sargento Chen',
             text: 'Desde el pabellón, el comisario vigiló cada carga. Meses después respondieron los barcos de hierro.',
           },
+          voiceKey: 'cine-1839-2',
+          narration: 'Desde el pabellón, el comisario vigiló cada carga. Meses después, Londres respondió con cañones y sus navíos tomaron los fuertes exteriores de Shajiao y Dajiao.',
         },
         {
-          duration: 6,
+          duration: 10.8,
           camera: [
             { t: 0, pos: [0, 2.8, -20], look: [0, 1.4, -60], fov: 48 },
             { t: 1, pos: [2, 4.4, -32], look: [0, 1.2, -66], fov: 54 },
@@ -220,6 +226,8 @@ var Cinematics = (function () {
             text: 'Veinte meses y veintitrés días separan la destrucción del opio del asalto de Humen. Esta partida transcurre en la segunda.',
             source: 'Wikipedia · First Opium War',
           },
+          voiceKey: 'cine-1839-3',
+          narration: 'Veinte meses y veintitrés días separan la quema del opio del asalto a la bocana de Humen. Aquí comienza nuestra defensa en la batería de Weiyuan.',
           audio: 'cannon',
         },
       ],
@@ -232,7 +240,7 @@ var Cinematics = (function () {
       handheld: true,
       shots: [
         {
-          duration: 7,
+          duration: 13.0,
           camera: [
             { t: 0, pos: [-12, 5.6, -14], look: [0, 2.6, -38], fov: 54 },
             { t: 1, pos: [8, 4.3, -20], look: [0, 2.4, -40], fov: 48 },
@@ -246,11 +254,13 @@ var Cinematics = (function () {
             speaker: 'Vigía de Anunghoy',
             text: '¡Vela y humo en la garganta del río! El vapor de hierro embiste la cadena del Bogue.',
           },
+          voiceKey: 'cine-squadron-0',
+          narration: 'Veintitrés de febrero de mil ochocientos cuarenta y uno. Doce navíos británicos fuerzan la bocana contra treinta juncos chinos. El vapor de hierro Némesis embiste nuestra cadena del río.',
           audio: 'waveHorn',
           stage: function (ctx) { return Scenes.squadronApproach(ctx); },
         },
         {
-          duration: 7,
+          duration: 11.0,
           camera: [
             { t: 0, pos: [-8.5, 2.5, -31], look: [0, 2.5, -38], fov: 46 },
             { t: 1, pos: [-6.0, 3.8, -44], look: [0, 2.6, -36], fov: 44 },
@@ -264,6 +274,8 @@ var Cinematics = (function () {
             speaker: 'Comandante Guan Tianpei',
             text: 'Sus ruedas remontan la corriente sin viento y lanzan cohetes incendarios. ¡Asegurad la batería!',
           },
+          voiceKey: 'cine-squadron-1',
+          narration: 'Sus ruedas de paletas remontan la corriente sin viento y lanzan cohetes incendiarios sobre Anunghoy. ¡Asegurad las piezas de retaguardia!',
           audio: 'cannon',
         },
       ],
@@ -276,7 +288,7 @@ var Cinematics = (function () {
       handheld: true,
       shots: [
         {
-          duration: 8,
+          duration: 14.8,
           camera: [
             { t: 0, pos: [2.5, 2.0, 13], look: [0, 2.4, 0], fov: 52 },
             { t: 1, pos: [-4.5, 2.6, 8.5], look: [0, 2.4, 0], fov: 46 },
@@ -290,11 +302,13 @@ var Cinematics = (function () {
             speaker: 'Sargento Chen',
             text: '¡Las hojas del portón ceden bajo los hachazos! ¡Cerrad la brecha en la puerta norte!',
           },
+          voiceKey: 'cine-assault-0',
+          narration: 'Veintiséis de febrero de mil ochocientos cuarenta y uno, una y veinte de la tarde. Tras el bombardeo, los marines desembarcan y el portón de madera cede bajo los hachazos. ¡Cerrad la brecha en la puerta norte!',
           audio: 'cannon',
           stage: function (ctx) { return Scenes.rearAssault(ctx); },
         },
         {
-          duration: 8,
+          duration: 9.5,
           camera: [
             { t: 0, pos: [-13, 5.2, 10], look: [-2, 3.4, 0.5], fov: 48 },
             { t: 1, pos: [-4.5, 6.2, 7.5], look: [-1, 3.6, 0.2], fov: 45 },
@@ -308,10 +322,12 @@ var Cinematics = (function () {
             speaker: 'Maestro Xu',
             text: 'Apoyan las escalas de bambú contra el granito mientras las balas barren el parapeto.',
           },
+          voiceKey: 'cine-assault-1',
+          narration: 'Mil treinta y siete hombres trepan por las escalas de bambú contra el granito mientras la artillería enemiga barre todo el parapeto.',
           audio: 'explosion',
         },
         {
-          duration: 6,
+          duration: 13.0,
           camera: [
             { t: 0, pos: [-1.8, 5.4, 4.2], look: [0, 5.3, -0.8], fov: 40 },
             { t: 1, pos: [1.2, 5.5, 3.2], look: [0, 5.3, -0.8], fov: 36 },
@@ -325,6 +341,8 @@ var Cinematics = (function () {
             speaker: 'Almirante Guan Tianpei',
             text: 'Lleva mi sello al emperador. Yo juré guardar estas baterías con mi vida; no daré un paso atrás.',
           },
+          voiceKey: 'cine-assault-2',
+          narration: 'Lleva mi sello al emperador. Yo, Guan Tianpei, juré guardar estas baterías con mi vida; rendirse sería traición. No daré un paso atrás.',
         },
       ],
     },
@@ -336,7 +354,7 @@ var Cinematics = (function () {
       handheld: false,
       shots: [
         {
-          duration: 8,
+          duration: 12.6,
           camera: [
             { t: 0, pos: [-1.5, 2.5, 16], look: [-1.5, 2.4, 6.5], fov: 50 },
             { t: 1, pos: [5.5, 3.0, 13], look: [-1.5, 2.4, 6.5], fov: 44 },
@@ -350,11 +368,13 @@ var Cinematics = (function () {
             speaker: 'Maestro Xu',
             text: 'Cañones de bronce clavados sobre sus cureñas rotas; la campana de Humen enmudece bajo otro pabellón.',
           },
+          voiceKey: 'cine-fall-0',
+          narration: 'Cayeron trescientas treinta y nueve piezas de artillería y mil trescientos defensores. Los cañones de bronce yacen clavados; la campana de Humen enmudece bajo otro pabellón.',
           audio: 'cannon',
           stage: function (ctx) { return Scenes.theFall(ctx); },
         },
         {
-          duration: 8,
+          duration: 11.0,
           camera: [
             { t: 0, pos: [3.2, 2.8, 10.5], look: [-2.2, 4.8, -2.0], fov: 44 },
             { t: 1, pos: [-4.5, 6.4, 9.0], look: [-2.2, 4.8, -2.0], fov: 48 },
@@ -368,9 +388,11 @@ var Cinematics = (function () {
             speaker: 'Parte naval del HMS Blenheim',
             text: 'Salva de honor minuto a minuto por el valiente almirante Guan Tianpei, caído frente a su batería.',
           },
+          voiceKey: 'cine-fall-1',
+          narration: 'Al día siguiente, la familia del almirante Guan Tianpei reclamó su cuerpo, y la fragata inglesa Blenheim lo despidió con una salva de honor minuto a minuto.',
         },
         {
-          duration: 8,
+          duration: 12.0,
           camera: [
             { t: 0, pos: [4, 4.8, 10], look: [0, 2.2, -32], fov: 50 },
             { t: 1, pos: [0, 6.5, 14], look: [0, 2.2, -36], fov: 58 },
@@ -384,6 +406,8 @@ var Cinematics = (function () {
             speaker: 'Maestro Xu',
             text: 'Las murallas de Humen cayeron en un día, pero su memoria permaneció intacta en la piedra.',
           },
+          voiceKey: 'cine-fall-2',
+          narration: 'Humen cayó ese día. Cantón se rindió en mayo y el Tratado de Nankín cerró la guerra, pero la memoria de quienes resistieron en la piedra permanece intacta.',
         },
       ],
     },

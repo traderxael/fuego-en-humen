@@ -12,6 +12,7 @@ global.Models = Models;
 const Scenes = require('../js/story/scenes');
 global.Scenes = Scenes;
 const Cinematics = require('../js/story/cinematics');
+const { Voice } = require('../js/voice');
 
 const ROOT = path.join(__dirname, '..');
 const CINE_DIR = path.join(ROOT, 'assets', 'models', 'cinematics');
@@ -244,4 +245,29 @@ test('Cinematics keeps 3D stage alive across all shots, applies & restores sky/f
   assert.strictEqual(Cinematics.isActive(), false);
   assert.strictEqual(camera.fov, 75);
   assert.strictEqual(scene.background.getHex(), 0x9fc7e8);
+});
+
+test('Neural Spanish MP3 narration clips exist for briefing, cinematics, waves, beats and endings', () => {
+  assert.ok(Voice && Voice.AUDIO_CLIPS, 'Voice.AUDIO_CLIPS exported');
+  const keys = Object.keys(Voice.AUDIO_CLIPS);
+  assert.ok(keys.length >= 30, 'all 30+ story narration keys registered');
+
+  for (const key of keys) {
+    const relPath = Voice.AUDIO_CLIPS[key];
+    const absPath = path.join(ROOT, relPath);
+    assert.ok(fs.existsSync(absPath), `${relPath} exists`);
+    const stat = fs.statSync(absPath);
+    assert.ok(stat.size > 5 * 1024, `${relPath} is non-empty MP3 (> 5 KB)`);
+  }
+
+  for (const seqId of ['humen-1839', 'humen-squadron', 'humen-assault', 'humen-fall']) {
+    const seq = Cinematics.SEQUENCES[seqId];
+    for (let i = 0; i < seq.shots.length; i++) {
+      const shot = seq.shots[i];
+      assert.ok(shot.voiceKey && Voice.AUDIO_CLIPS[shot.voiceKey], `${seqId} shot ${i} links valid voiceKey`);
+      assert.strictEqual(typeof shot.narration, 'string', `${seqId} shot ${i} defines narration script`);
+      assert.ok(shot.narration.length > 20, `${seqId} shot ${i} narration is substantive`);
+      assert.ok(shot.duration >= 9, `${seqId} shot ${i} duration covers spoken track`);
+    }
+  }
 });
