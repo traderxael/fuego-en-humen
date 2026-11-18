@@ -4,6 +4,10 @@
 var Models = (function () {
   var britishTemplate = null;
   var britishClips = null;
+  var qingTemplate = null;
+  var qingClips = null;
+  var commanderTemplate = null;
+  var commanderClips = null;
 
   function mat(color) {
     return new THREE.MeshStandardMaterial({ color: color, roughness: 0.9, metalness: 0.0 });
@@ -57,6 +61,9 @@ var Models = (function () {
   }
 
   function makeQingSoldier() {
+    if (qingTemplate && typeof THREE.SkeletonUtils !== 'undefined') {
+      return cloneRiggedTemplate(qingTemplate, qingClips, 'qing-soldier');
+    }
     var g = new THREE.Group();
     // Blue robe: tapered body (cylinder) + shoulders
     g.add(cyl(0.22, 0.34, 1.05, 0x2e4a7a, 0, 0.55, 0, 12));
@@ -77,6 +84,18 @@ var Models = (function () {
     return g;
   }
 
+  function makeQingCommander() {
+    if (commanderTemplate && typeof THREE.SkeletonUtils !== 'undefined') {
+      return cloneRiggedTemplate(commanderTemplate, commanderClips, 'qing-commander');
+    }
+    var g = makeQingSoldier();
+    // Add crimson commander surcoat & gold chest ornament when falling back.
+    g.add(box(0.52, 0.48, 0.33, 0x7c1814, 0, 0.92, 0));
+    g.add(cyl(0.12, 0.12, 0.04, 0xd4a62a, 0, 0.96, -0.18, 12));
+    g.userData = { type: 'qing-commander' };
+    return g;
+  }
+
   function fitToHeight(root, height) {
     root.updateMatrixWorld(true);
     var box = new THREE.Box3().setFromObject(root);
@@ -91,12 +110,16 @@ var Models = (function () {
     return root;
   }
 
-  function findClip(pattern) {
-    if (!britishClips) return null;
-    for (var i = 0; i < britishClips.length; i++) {
-      if (pattern.test(britishClips[i].name)) return britishClips[i];
+  function findClipIn(clips, pattern) {
+    if (!clips) return null;
+    for (var i = 0; i < clips.length; i++) {
+      if (pattern.test(clips[i].name)) return clips[i];
     }
     return null;
+  }
+
+  function findClip(pattern) {
+    return findClipIn(britishClips, pattern);
   }
 
   function rootSpeed(clip) {
@@ -146,11 +169,11 @@ var Models = (function () {
     anim.current = name;
   }
 
-  function setupSoldierAnim(model) {
-    if (!britishClips || !britishClips.length || typeof THREE.AnimationMixer !== 'function') return;
-    var walkClip = findClip(/jogging/i) || findClip(/walking/i);
-    var idleClip = findClip(/offensiveidle/i) || findClip(/idle/i);
-    var deathClip = findClip(/dying|death/i);
+  function setupSoldierAnimWithClips(model, clips) {
+    if (!clips || !clips.length || typeof THREE.AnimationMixer !== 'function') return;
+    var walkClip = findClipIn(clips, /jogging/i) || findClipIn(clips, /walking/i);
+    var idleClip = findClipIn(clips, /offensiveidle/i) || findClipIn(clips, /idle/i);
+    var deathClip = findClipIn(clips, /dying|death/i);
     var mixer = new THREE.AnimationMixer(model);
     var actions = {};
     if (walkClip) actions.walk = mixer.clipAction(walkClip);
@@ -170,6 +193,10 @@ var Models = (function () {
       current: current,
       walkSpeed: walkClip && walkClip._rootSpeed > 0.1 ? walkClip._rootSpeed : 1.67,
     };
+  }
+
+  function setupSoldierAnim(model) {
+    setupSoldierAnimWithClips(model, britishClips);
   }
 
   function updateSoldierAnimation(model, dt, speed, state) {
@@ -224,47 +251,99 @@ var Models = (function () {
     if (anim) anim.mixer.stopAllAction();
   }
 
-  function loadBritishSoldierModel(url, onReady) {
-    if (typeof THREE === 'undefined' || !THREE.GLTFLoader) return;
+  function loadRiggedCharacter(url, height, onLoaded, label) {
+    if (typeof THREE === 'undefined' || !THREE.GLTFLoader || !url) return false;
     var loader = new THREE.GLTFLoader();
     loader.load(url, function (gltf) {
       var root = gltf.scene;
       root.rotation.y = Math.PI; // exported model faces +Z; game forward is -Z
-      fitToHeight(root, 1.92);
-      britishClips = gltf.animations || [];
-      for (var i = 0; i < britishClips.length; i++) {
-        var clip = britishClips[i];
+      fitToHeight(root, height || 1.92);
+      var clips = gltf.animations || [];
+      for (var i = 0; i < clips.length; i++) {
+        var clip = clips[i];
         clip._rootSpeed = rootSpeed(clip);
         if (/jogging|walking/i.test(clip.name)) stripRootMotion(clip);
       }
+      if (typeof onLoaded === 'function') onLoaded(root, clips);
+    }, undefined, function (error) {
+      if (typeof console !== 'undefined') console.warn('No se pudo cargar el modelo ' + (label || url) + ':', error);
+      if (typeof onLoaded === 'function') onLoaded(null, []);
+    });
+    return true;
+  }
+
+  function loadBritishSoldierModel(url, onReady) {
+    loadRiggedCharacter(url, 1.92, function (root, clips) {
+      if (!root) return;
+      britishClips = clips;
       britishTemplate = root;
       if (typeof onReady === 'function') onReady(root);
-    }, undefined, function (error) {
-      if (typeof console !== 'undefined') console.warn('No se pudo cargar el soldado británico GLB:', error);
-    });
+    }, 'británico GLB');
+  }
+
+  function loadQingSoldierModels(soldierUrl, commanderUrl, onReady) {
+    var pending = (soldierUrl ? 1 : 0) + (commanderUrl ? 1 : 0);
+    if (!pending) {
+      if (typeof onReady === 'function') onReady();
+      return;
+    }
+    function step() {
+      pending--;
+      if (pending <= 0 && typeof onReady === 'function') onReady();
+    }
+    if (soldierUrl) {
+      loadRiggedCharacter(soldierUrl, 1.88, function (root, clips) {
+        if (root) {
+          qingTemplate = root;
+          qingClips = clips;
+        }
+        step();
+      }, 'Qing GLB');
+    }
+    if (commanderUrl) {
+      loadRiggedCharacter(commanderUrl, 1.98, function (root, clips) {
+        if (root) {
+          commanderTemplate = root;
+          commanderClips = clips;
+        }
+        step();
+      }, 'comandante Qing GLB');
+    }
   }
 
   function hasBritishModel() {
     return !!britishTemplate;
   }
 
+  function hasQingModel() {
+    return !!qingTemplate;
+  }
+
+  function hasCommanderModel() {
+    return !!commanderTemplate;
+  }
+
+  function cloneRiggedTemplate(template, clips, typeName) {
+    var model = THREE.SkeletonUtils.clone(template);
+    model.traverse(function (node) {
+      if (node.isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+        node.frustumCulled = false;
+        if (node.material) node.material = node.material.clone();
+      }
+    });
+    model.userData = { type: typeName || 'soldier' };
+    setupSoldierAnimWithClips(model, clips);
+    var holder = new THREE.Group();
+    holder.add(model);
+    holder.userData = model.userData;
+    return holder;
+  }
+
   function makeBritishSoldier() {
     if (britishTemplate && typeof THREE.SkeletonUtils !== 'undefined') {
-      var model = THREE.SkeletonUtils.clone(britishTemplate);
-      model.traverse(function (node) {
-        if (node.isMesh) {
-          node.castShadow = true;
-          node.receiveShadow = true;
-          node.frustumCulled = false;
-          if (node.material) node.material = node.material.clone();
-        }
-      });
-      model.userData = { type: 'british-soldier' };
-      setupSoldierAnim(model);
-      var holder = new THREE.Group();
-      holder.add(model);
-      holder.userData = model.userData;
-      return holder;
+      return cloneRiggedTemplate(britishTemplate, britishClips, 'british-soldier');
     }
     var g = new THREE.Group();
     // Red coat
@@ -1142,9 +1221,13 @@ var Models = (function () {
     makeFlag: makeFlag,
     makeFlagPole: makeFlagPole,
     makeQingSoldier: makeQingSoldier,
+    makeQingCommander: makeQingCommander,
     makeBritishSoldier: makeBritishSoldier,
     hasBritishModel: hasBritishModel,
+    hasQingModel: hasQingModel,
+    hasCommanderModel: hasCommanderModel,
     loadBritishSoldierModel: loadBritishSoldierModel,
+    loadQingSoldierModels: loadQingSoldierModels,
     updateSoldierAnimation: updateSoldierAnimation,
     playSoldierDeath: playSoldierDeath,
     stopSoldierAnimation: stopSoldierAnimation,

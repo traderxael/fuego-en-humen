@@ -41,10 +41,16 @@
       </div>
     </div>
 
-    <!-- Cinematics: letterbox, historical cards and subtitles -->
+    <!-- Cinematics: letterbox, historical cards, progress bar and subtitles -->
     <div id="cinematic" aria-hidden="true">
       <div class="cine-bar cine-top"></div>
-      <div class="cine-bar cine-bottom"></div>
+      <div class="cine-bar cine-bottom">
+        <div id="cine-hud">
+          <span id="cine-step">Plano 1 / 4</span>
+          <div id="cine-progress"><div id="cine-progress-fill"></div></div>
+          <span id="cine-skip-hint">Clic / Espacio: siguiente plano · Esc: saltar</span>
+        </div>
+      </div>
       <div id="cine-caption" class="hidden">
         <div class="cine-caption-tag"></div>
         <div class="cine-caption-text"></div>

@@ -1,10 +1,6 @@
-// 3D staging for the cinematics: Blender-crafted historical GLB landmarks
-// combined with rigged soldiers, fleet vessels, smoke and gunfire effects.
-//
-// Each builder returns { group, update(t, dt), dispose() } and is dropped
-// into the main scene for the length of a shot. Cached GLB scenes are cloned
-// per shot and tagged `userData.sharedAsset = true` so dispose() leaves shared
-// WebGL geometries/materials intact for instant replay.
+// 3D staging for the cinematics: Blender-crafted PBR .glb landmarks paired with
+// 52-bone rigged GLB soldiers & commanders, Congreve rockets, shell arcs, smoke
+// plumes and shockwave shake.
 //
 // Browser global `Scenes`; also guarded for Node tooling consistency.
 
@@ -182,7 +178,21 @@ var Scenes = (function () {
     return holder;
   }
 
-  // A soldier posed with the procedural rig (or rigged Hyper3D GLB for walk/idle).
+  function wrapGlbFigure(glbSoldier, clipName, t) {
+    markSharedSubtree(glbSoldier);
+    var moveSpeed = clipName === 'walk' ? 1.8 : 0.0;
+    if (typeof Models.updateSoldierAnimation === 'function') {
+      Models.updateSoldierAnimation(glbSoldier, t || 0, moveSpeed, clipName || 'idle');
+    }
+    glbSoldier.userData.glbUpdate = function (dt, speed, state) {
+      if (typeof Models.updateSoldierAnimation === 'function') {
+        Models.updateSoldierAnimation(glbSoldier, dt, speed != null ? speed : moveSpeed, state || clipName || 'idle');
+      }
+    };
+    return { group: glbSoldier, isGlb: true };
+  }
+
+  // British soldier posed with rigged Hyper3D GLB (for walk/idle) or 21-bone procedural IK rig.
   function figure(variant, clipName, t) {
     var wantGlb = (clipName === 'walk' || clipName === 'idle' || !clipName) &&
       variant !== 'officer' &&
@@ -192,20 +202,7 @@ var Scenes = (function () {
       Models.hasBritishModel() &&
       typeof Models.makeBritishSoldier === 'function';
 
-    if (wantGlb) {
-      var glbSoldier = Models.makeBritishSoldier();
-      markSharedSubtree(glbSoldier);
-      var moveSpeed = clipName === 'walk' ? 1.8 : 0.0;
-      if (typeof Models.updateSoldierAnimation === 'function') {
-        Models.updateSoldierAnimation(glbSoldier, t || 0, moveSpeed, clipName || 'idle');
-      }
-      glbSoldier.userData.glbUpdate = function (dt, speed, state) {
-        if (typeof Models.updateSoldierAnimation === 'function') {
-          Models.updateSoldierAnimation(glbSoldier, dt, speed != null ? speed : moveSpeed, state || clipName || 'idle');
-        }
-      };
-      return { group: glbSoldier, isGlb: true };
-    }
+    if (wantGlb) return wrapGlbFigure(Models.makeBritishSoldier(), clipName, t);
 
     var rig = Rig.buildSoldier({ faction: 'british', variant: variant });
     var anim = new RigAnim.Animator(rig);
@@ -220,7 +217,18 @@ var Scenes = (function () {
     return rig;
   }
 
-  function qingFigure(t, clipName) {
+  // Qing defender / commander using 52-bone rigged GLB when loaded, else procedural rig.
+  function qingFigure(t, clipName, isCommander) {
+    var canGlb = (clipName === 'walk' || clipName === 'idle' || !clipName) &&
+      typeof Models !== 'undefined' && Models;
+
+    if (canGlb && isCommander && typeof Models.hasCommanderModel === 'function' && Models.hasCommanderModel() && typeof Models.makeQingCommander === 'function') {
+      return wrapGlbFigure(Models.makeQingCommander(), clipName || 'idle', t);
+    }
+    if (canGlb && !isCommander && typeof Models.hasQingModel === 'function' && Models.hasQingModel() && typeof Models.makeQingSoldier === 'function') {
+      return wrapGlbFigure(Models.makeQingSoldier(), clipName || 'idle', t);
+    }
+
     var rig = Rig.buildSoldier({ faction: 'qing' });
     var anim = new RigAnim.Animator(rig);
     var clip = clipName === 'aim' ? RigAnim.Clips.aim()
@@ -269,10 +277,10 @@ var Scenes = (function () {
     var group = new THREE.Group();
     group.name = 'scene-opium-1839';
 
-    group.add(plane(180, 180, 0xd9c391, 0, 0, 0, { roughness: 1 }));
-    var sea = plane(240, 160, 0x265d88, 0, 0.03, -84, { roughness: 0.35, transparent: true, opacity: 0.92 });
+    group.add(plane(200, 200, 0xd9c391, 0, 0, 0, { roughness: 1 }));
+    var sea = plane(260, 170, 0x265d88, 0, 0.03, -86, { roughness: 0.35, transparent: true, opacity: 0.92 });
     group.add(sea);
-    group.add(box(180, 0.45, 4, 0xcdb37e, 0, 0.22, -26));
+    group.add(box(200, 0.45, 4, 0xcdb37e, 0, 0.22, -26));
 
     // Procedural fallback shown only until the Blender GLB mounts.
     var fallback = new THREE.Group();
@@ -297,33 +305,34 @@ var Scenes = (function () {
       lumps.push(lump);
     }
 
-    // Mount Blender 3D set (Pavilion, LinZexu, OpiumPit, SluiceGate, LimeWater, OpiumChests, OpiumBalls, Paddles).
+    // Mount Blender 3D set (Pavilion, LinZexu, 3x OpiumPit, SluiceGate, LimeWater, OpiumChests, OpiumBalls, Paddles).
     var blenderSet = mountBlenderSet('opium', group, null, function () {
       fallback.visible = false;
     });
 
-    // Qing officials and pit workers around the trench.
+    // Qing officials near Pavilion + workers patrolling beside all 3 dissolution pits.
     var officials = [];
     var spots = [
-      { x: -1.8, y: 0.78, z: -5.2 },
-      { x: 1.8, y: 0.78, z: -5.2 },
-      { x: -9.5, y: 0, z: -10.5 },
-      { x: 9.5, y: 0, z: -10.5 },
+      { x: -1.8, y: 0.78, z: -5.2, cmd: false },
+      { x: 1.8, y: 0.78, z: -5.2, cmd: true },
+      { x: -9.5, y: 0, z: -10.5, cmd: false },
+      { x: 9.5, y: 0, z: -10.5, cmd: false },
     ];
     for (var i = 0; i < spots.length; i++) {
-      var f = qingFigure(i * 0.7);
+      var f = qingFigure(i * 0.7, 'idle', spots[i].cmd);
       f.group.position.set(spots[i].x, spots[i].y, spots[i].z);
       f.group.rotation.y = Math.PI;
       group.add(f.group);
       officials.push(f);
     }
-    var soldiers = [];
-    for (var s = 0; s < 5; s++) {
-      var sf = qingFigure(s * 0.5);
-      sf.group.position.set(-10 + s * 5, 0, -2.5);
-      sf.group.rotation.y = Math.PI;
-      group.add(sf.group);
-      soldiers.push(sf);
+    var walkers = [];
+    for (var w = 0; w < 6; w++) {
+      var wf = qingFigure(w * 0.45, 'walk', false);
+      var wx = -12 + w * 4.8;
+      wf.group.position.set(wx, 0, -7.2);
+      wf.group.rotation.y = Math.PI;
+      group.add(wf.group);
+      walkers.push({ rig: wf, baseX: wx, phase: w * 1.1 });
     }
 
     // British merchant hulks waiting offshore.
@@ -338,11 +347,12 @@ var Scenes = (function () {
     }
 
     var smokeTick = 0;
+    var pitSpots = [-14.5, 0.0, 14.5];
     return {
       group: group,
       blenderSet: blenderSet,
       update: function (t, dt) {
-        var pour = Math.max(0, Math.min(1, (t - 1.2) / 5));
+        var pour = Math.max(0, Math.min(1, (t - 1.2) / 14));
         sea.position.y = 0.03 + Math.sin(t * 1.4) * 0.04;
 
         if (blenderSet.mounted) {
@@ -359,7 +369,7 @@ var Scenes = (function () {
             nodes.Paddles.rotation.x = base.Paddles.rx + Math.sin(t * 3.1) * 0.12;
           }
           if (nodes.SluiceGate && base.SluiceGate) {
-            var lift = Math.max(0, Math.min(1, (t - 2.4) / 3.5));
+            var lift = Math.max(0, Math.min(1, (t - 4.0) / 5.5));
             nodes.SluiceGate.position.y = base.SluiceGate.py + lift * 0.72;
           }
           if (nodes.LinZexu && base.LinZexu) {
@@ -368,7 +378,7 @@ var Scenes = (function () {
         } else {
           for (var i = 0; i < lumps.length; i++) {
             var lp = lumps[i];
-            var k = Math.max(0, Math.min(1, (t - 1.5 - i * 0.22) / 2.2));
+            var k = Math.max(0, Math.min(1, (t - 1.5 - i * 0.22) / 3.2));
             lp.position.x += Math.sin(i * 2.7) * 0.012;
             lp.position.z -= k * k * 9;
             lp.position.y = 0.5 - k * k * 1.1;
@@ -379,13 +389,19 @@ var Scenes = (function () {
           }
         }
 
-        if (ctx && ctx.effects && typeof ctx.effects.smoke === 'function' && t > smokeTick + 0.55) {
+        // Chemical lime steam rising continuously across all 3 pits.
+        if (ctx && ctx.effects && typeof ctx.effects.smoke === 'function' && t > smokeTick + 0.35) {
           smokeTick = t;
-          ctx.effects.smoke({ x: -3 + Math.sin(t * 1.7) * 4, y: 0.9, z: -13.5 + Math.cos(t) * 2 });
+          var px = pitSpots[Math.floor(t * 2) % pitSpots.length] + Math.sin(t * 2.3) * 3.2;
+          ctx.effects.smoke({ x: px, y: 0.9, z: -13.5 + Math.cos(t * 1.5) * 2.4 });
         }
 
-        for (var o = 0; o < officials.length; o++) updateFigure(officials[o], dt);
-        for (var g = 0; g < soldiers.length; g++) updateFigure(soldiers[g], dt);
+        for (var o = 0; o < officials.length; o++) updateFigure(officials[o], dt, 0, 'idle');
+        for (var w = 0; w < walkers.length; w++) {
+          var wk = walkers[w];
+          wk.rig.group.position.z = -7.2 - (Math.sin(t * 0.55 + wk.phase) * 0.5 + 0.5) * 2.0;
+          updateFigure(wk.rig, dt, 1.4, 'walk');
+        }
         for (var hh = 0; hh < hulks.length; hh++) {
           hulks[hh].position.y = -0.4 + Math.sin(t * 0.6 + hh) * 0.12;
         }
@@ -402,14 +418,11 @@ var Scenes = (function () {
     var group = new THREE.Group();
     group.name = 'scene-squadron';
 
-    var water = plane(360, 360, 0x265985, 0, 0, 0, { roughness: 0.34, transparent: true, opacity: 0.95 });
+    var water = plane(380, 380, 0x23527c, 0, 0, 0, { roughness: 0.32, transparent: true, opacity: 0.95 });
     group.add(water);
-    // Pearl River banks & defensive earthworks.
     group.add(box(120, 3, 60, 0xb89968, 0, -1, 48));
     group.add(box(120, 3, 60, 0xb89968, 0, -1, -78));
-    var fortSpots = [
-      { x: -16, z: 26 }, { x: 14, z: 26 },
-    ];
+    var fortSpots = [{ x: -16, z: 26 }, { x: 14, z: 26 }];
     for (var f = 0; f < fortSpots.length; f++) {
       var wall = Models.makeFortWall(16, 3.2);
       wall.position.set(fortSpots[f].x, 0, fortSpots[f].z);
@@ -420,7 +433,6 @@ var Scenes = (function () {
       group.add(gun);
     }
 
-    // Procedural fallback fleet hidden once Blender set mounts.
     var fallback = new THREE.Group();
     group.add(fallback);
     if (typeof Models.makeSteamer === 'function') {
@@ -439,12 +451,11 @@ var Scenes = (function () {
       fallback.add(boom);
     }
 
-    // Mount Blender 3D set (Nemesis, Wheel_L, Wheel_R, Funnel, WarJunk, IronChainBoom, AnunghoyBattery).
+    // Mount Blender 3D set (Nemesis, Wheel_L, Wheel_R, WakeFoam, Funnel, WarJunk, BurningJunk, IronChainBoom, AnunghoyBattery).
     var blenderSet = mountBlenderSet('squadron', group, null, function () {
       fallback.visible = false;
     });
 
-    // Flanking wooden Royal Navy ships & Qing fire raft.
     var ships = [];
     var defs = [
       { x: -16, z: -56, rot: 0.14, s: 1.1 },
@@ -465,6 +476,17 @@ var Scenes = (function () {
       group.add(fireRaft);
     }
 
+    // Animated Congreve rockets fired from Nemesis toward BurningJunk / AnunghoyBattery.
+    var rockets = [];
+    var rocketGeo = new THREE.SphereGeometry(0.18, 6, 5);
+    var rocketMat = mat(0xff8c24, { roughness: 0.4, emissive: 0xff4e00 });
+    for (var rk = 0; rk < 3; rk++) {
+      var rmesh = new THREE.Mesh(rocketGeo, rocketMat);
+      rmesh.visible = false;
+      group.add(rmesh);
+      rockets.push({ mesh: rmesh, cycle: 3.4, offset: rk * 1.1, explodedIdx: -1 });
+    }
+
     var cannonTick = 0;
     var steamTick = 0;
     return {
@@ -473,36 +495,78 @@ var Scenes = (function () {
       update: function (t, dt) {
         water.position.y = Math.sin(t * 1.1) * 0.05;
 
+        var nemX = 0;
+        var nemZ = -40 + t * 0.9;
         if (blenderSet.mounted) {
           var nodes = blenderSet.nodes;
           var base = blenderSet.base;
           if (nodes.Nemesis && base.Nemesis) {
-            nodes.Nemesis.position.z = base.Nemesis.pz + t * 1.1;
+            nodes.Nemesis.position.z = base.Nemesis.pz + t * 0.9;
             nodes.Nemesis.position.y = base.Nemesis.py - 0.35 + Math.sin(t * 1.3) * 0.12;
             nodes.Nemesis.rotation.z = base.Nemesis.rz + Math.sin(t * 1.1) * 0.025;
-            if (ctx && ctx.effects && typeof ctx.effects.smoke === 'function' && t > steamTick + 0.32) {
+            nemX = nodes.Nemesis.position.x;
+            nemZ = nodes.Nemesis.position.z;
+            if (ctx && ctx.effects && typeof ctx.effects.smoke === 'function' && t > steamTick + 0.25) {
               steamTick = t;
-              ctx.effects.smoke({
-                x: nodes.Nemesis.position.x,
-                y: 8.2,
-                z: nodes.Nemesis.position.z - 0.2,
-              });
+              ctx.effects.smoke({ x: nemX, y: 8.2, z: nemZ - 0.2 });
             }
           }
-          if (nodes.Wheel_L) nodes.Wheel_L.rotation.x -= dt * 4.5;
-          if (nodes.Wheel_R) nodes.Wheel_R.rotation.x -= dt * 4.5;
+          if (nodes.Wheel_L) nodes.Wheel_L.rotation.x -= dt * 4.8;
+          if (nodes.Wheel_R) nodes.Wheel_R.rotation.x -= dt * 4.8;
+          if (nodes.WakeFoam) {
+            nodes.WakeFoam.scale.z = 0.9 + Math.sin(t * 5.0) * 0.14;
+          }
           if (nodes.WarJunk && base.WarJunk) {
             nodes.WarJunk.position.y = base.WarJunk.py - 0.25 + Math.sin(t * 1.2 + 1.0) * 0.14;
             nodes.WarJunk.rotation.z = base.WarJunk.rz + Math.sin(t * 0.9) * 0.03;
+          }
+          if (nodes.BurningJunk && base.BurningJunk) {
+            nodes.BurningJunk.position.y = base.BurningJunk.py - 0.2 + Math.sin(t * 1.4 + 0.5) * 0.16;
+            nodes.BurningJunk.rotation.z = base.BurningJunk.rz + 0.06 + Math.sin(t * 1.1) * 0.03;
           }
           if (nodes.IronChainBoom && base.IronChainBoom) {
             nodes.IronChainBoom.rotation.z = base.IronChainBoom.rz + Math.sin(t * 1.5) * 0.008;
           }
         }
 
+        // Congreve rocket arcs.
+        for (var r = 0; r < rockets.length; r++) {
+          var rok = rockets[r];
+          var phaseTime = Math.max(0, t - rok.offset);
+          var loopIdx = Math.floor(phaseTime / rok.cycle);
+          var u = (phaseTime % rok.cycle) / rok.cycle;
+          if (u < 0.65) {
+            var p = u / 0.65;
+            var targetX = r % 2 === 0 ? -11.0 : -17.5;
+            var targetZ = r % 2 === 0 ? -37.0 : -28.0;
+            rok.mesh.visible = true;
+            rok.mesh.position.set(
+              nemX + (targetX - nemX) * p,
+              2.6 + Math.sin(p * Math.PI) * 5.2,
+              nemZ + (targetZ - nemZ) * p
+            );
+            if (ctx && ctx.effects && typeof ctx.effects.smoke === 'function' && Math.floor(t * 20) % 4 === r) {
+              ctx.effects.smoke({ x: rok.mesh.position.x, y: rok.mesh.position.y, z: rok.mesh.position.z });
+            }
+          } else {
+            rok.mesh.visible = false;
+            if (rok.explodedIdx !== loopIdx) {
+              rok.explodedIdx = loopIdx;
+              var ex = r % 2 === 0 ? -11.0 : -17.5;
+              var ez = r % 2 === 0 ? -37.0 : -28.0;
+              if (ctx && ctx.effects && typeof ctx.effects.explosion === 'function') {
+                ctx.effects.explosion({ x: ex, y: 1.6, z: ez });
+              }
+              if (typeof Cinematics !== 'undefined' && Cinematics.addCineShake) {
+                Cinematics.addCineShake(0.28);
+              }
+            }
+          }
+        }
+
         for (var i = 0; i < ships.length; i++) {
           var s = ships[i];
-          s.mesh.position.z += dt * 1.3;
+          s.mesh.position.z += dt * 1.1;
           s.mesh.position.y = -0.6 + Math.sin(t * 0.9 + i) * 0.12;
           s.mesh.rotation.z = Math.sin(t * 0.7 + i) * 0.02;
         }
@@ -513,11 +577,8 @@ var Scenes = (function () {
 
         if (ctx && ctx.effects && t > cannonTick + 1.45) {
           cannonTick = t;
-          var flashZ = blenderSet.mounted && blenderSet.nodes.Nemesis
-            ? blenderSet.nodes.Nemesis.position.z + 6
-            : -34;
           ctx.effects.muzzleFlash(
-            { x: -1.5, y: 2.2, z: flashZ },
+            { x: nemX - 1.5, y: 2.2, z: nemZ + 6 },
             { x: -0.3, y: 0.15, z: 1.0 },
             { big: true }
           );
@@ -536,7 +597,6 @@ var Scenes = (function () {
     group.name = 'scene-assault';
 
     group.add(plane(220, 220, 0xd2bb8a, 0, 0, 0, { roughness: 1 }));
-    // Flanking side wall so the bastion corner encloses the shot.
     var sideWall = Models.makeFortWall(28, 4.2);
     sideWall.position.set(-20, 0, 12);
     sideWall.rotation.y = Math.PI / 2;
@@ -547,55 +607,50 @@ var Scenes = (function () {
       group.add(bags);
     }
 
-    // Procedural fallback wall + ladders hidden once Blender breach GLB mounts.
     var fallback = new THREE.Group();
     group.add(fallback);
-    var wall = Models.makeFortWall(40, 4.2);
-    fallback.add(wall);
+    fallback.add(Models.makeFortWall(40, 4.2));
 
     var ladderSpots = [-7.2, -3.6, 6.4];
     for (var l = 0; l < ladderSpots.length; l++) {
       var lad = new THREE.Group();
-      for (var r = 0; r < 2; r++) {
-        lad.add(box(0.09, 5.8, 0.09, 0x6b4a2f, r === 0 ? -0.32 : 0.32, 2.9, 0));
-      }
-      for (var s = 0; s < 10; s++) {
-        lad.add(box(0.72, 0.07, 0.07, 0x5a3d26, 0, 0.45 + s * 0.52, 0));
-      }
+      for (var r = 0; r < 2; r++) lad.add(box(0.09, 5.8, 0.09, 0x6b4a2f, r === 0 ? -0.32 : 0.32, 2.9, 0));
+      for (var s = 0; s < 10; s++) lad.add(box(0.72, 0.07, 0.07, 0x5a3d26, 0, 0.45 + s * 0.52, 0));
       lad.position.set(ladderSpots[l], 0, 2.2);
       lad.rotation.x = -0.24;
       fallback.add(lad);
     }
 
-    // Mount Blender 3D set (BreachedBastion, Gate_L, Gate_R, SiegeLadders, GuanTianpei, Saber, ImperialSeal, AdmiralCannon).
     var blenderSet = mountBlenderSet('assault', group, null, function () {
       fallback.visible = false;
     });
 
-    // Storming British column (rigged GLB attackers + officers).
+    // Storming British column (rigged GLB attackers climbing ladders + breaching gate).
     var climbers = [];
     for (var i = 0; i < 10; i++) {
       var variant = i === 0 ? 'officer' : (i % 3 === 0 ? 'marine' : 'british');
       var f = figure(variant, 'walk', i * 0.3);
-      var lane = ladderSpots[i % ladderSpots.length] + ((i % 2) - 0.5) * 0.55;
-      f.group.position.set(lane, 0, 4.8 + (i % 3) * 0.9);
+      var isBreach = i < 3;
+      var lane = isBreach ? (-1.2 + i * 1.2) : (ladderSpots[i % ladderSpots.length] + ((i % 2) - 0.5) * 0.45);
+      var startZ = isBreach ? (6.8 + i * 1.4) : (4.8 + (i % 3) * 0.8);
+      f.group.position.set(lane, 0, startZ);
       f.group.rotation.y = Math.PI;
       group.add(f.group);
-      climbers.push({ rig: f, lane: lane, laneZ: f.group.position.z, phase: i * 0.6 });
+      climbers.push({ rig: f, lane: lane, laneZ: startZ, isBreach: isBreach });
     }
 
-    // Qing garrison holding the rampart alongside Admiral Guan Tianpei.
+    // Qing garrison (including rigged Qing soldiers) holding the rampart around Guan Tianpei.
     var defenders = [];
     for (var d = 0; d < 6; d++) {
       var dx = d < 3 ? -12 + d * 3.8 : 4.2 + (d - 3) * 3.8;
-      var q = qingFigure(d * 0.6, d % 2 === 0 ? 'aim' : 'idle');
+      var q = qingFigure(d * 0.6, d % 2 === 0 ? 'aim' : 'idle', d === 2);
       q.group.position.set(dx, 4.2, -1.0);
       q.group.rotation.y = 0;
       group.add(q.group);
       defenders.push(q);
     }
 
-    // Bombardment smoke rolling behind the parapet.
+    // Bombardment smoke + flying incoming artillery shells.
     var puffs = [];
     for (var p = 0; p < 10; p++) {
       var puff = new THREE.Mesh(
@@ -606,6 +661,10 @@ var Scenes = (function () {
       group.add(puff);
       puffs.push({ mesh: puff, vx: ((p % 2) - 0.5) * 0.45, vy: 0.45 + (p % 3) * 0.15, life: p * 0.6 });
     }
+
+    var shell = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mat(0x28282a, { roughness: 0.5, metalness: 0.6 }));
+    shell.visible = false;
+    group.add(shell);
 
     var blew = 0;
     return {
@@ -631,13 +690,18 @@ var Scenes = (function () {
 
         for (var i = 0; i < climbers.length; i++) {
           var c = climbers[i];
-          var k = Math.max(0, Math.min(1, (t - i * 0.35) / 5));
-          c.rig.group.position.z = c.laneZ - k * 2.6;
-          c.rig.group.position.y = k * 2.35;
-          updateFigure(c.rig, dt * (0.6 + k), 1.9, 'walk');
+          if (c.isBreach) {
+            var kb = Math.max(0, Math.min(1, t / 9.5));
+            c.rig.group.position.z = c.laneZ - kb * 5.2;
+          } else {
+            var k = Math.max(0, Math.min(1, (t - i * 0.35) / 8.0));
+            c.rig.group.position.z = c.laneZ - k * 2.6;
+            c.rig.group.position.y = k * 2.5;
+          }
+          updateFigure(c.rig, dt * 1.15, 1.9, 'walk');
         }
         for (var d = 0; d < defenders.length; d++) {
-          updateFigure(defenders[d], dt);
+          updateFigure(defenders[d], dt, 0, 'idle');
         }
         for (var p = 0; p < puffs.length; p++) {
           var pf = puffs[p];
@@ -652,13 +716,19 @@ var Scenes = (function () {
           }
           pf.mesh.material.opacity = Math.max(0, 0.5 - pf.life * 0.05);
         }
-        if (ctx && ctx.effects && t > blew + 1.4) {
+
+        // Incoming ballistic artillery shell arc every 1.6s.
+        var shellU = (t % 1.6) / 1.6;
+        shell.visible = true;
+        var hitX = -10 + ((Math.floor(t / 1.6) * 7) % 20);
+        shell.position.set(hitX, 12.0 * (1 - shellU) + 4.4 * shellU + Math.sin(shellU * Math.PI) * 3.5, -24 + shellU * 23);
+
+        if (ctx && ctx.effects && t > blew + 1.6) {
           blew = t;
-          ctx.effects.explosion({
-            x: -14 + ((t * 7) % 28),
-            y: 4.5 + Math.sin(t) * 0.8,
-            z: -1.5,
-          });
+          ctx.effects.explosion({ x: hitX, y: 4.6, z: -1.2 });
+          if (typeof Cinematics !== 'undefined' && Cinematics.addCineShake) {
+            Cinematics.addCineShake(0.32);
+          }
         }
       },
       dispose: function () {
@@ -675,14 +745,12 @@ var Scenes = (function () {
 
     group.add(plane(240, 240, 0xc4a174, 0, 0, 0, { roughness: 1 }));
     group.add(plane(240, 140, 0x265985, 0, -0.05, -88, { roughness: 0.35, transparent: true, opacity: 0.94 }));
-    var wall = Models.makeFortWall(40, 4.2);
-    group.add(wall);
+    group.add(Models.makeFortWall(40, 4.2));
     var wall2 = Models.makeFortWall(26, 4.2);
     wall2.position.set(-22, 0, 12);
     wall2.rotation.y = Math.PI / 2;
     group.add(wall2);
 
-    // Fallback cannons + flag shown only until Blender memorial set mounts.
     var fallback = new THREE.Group();
     group.add(fallback);
     for (var g = 0; g < 4; g++) {
@@ -695,12 +763,10 @@ var Scenes = (function () {
     fallback.add(flagFallback);
     fallback.add(box(0.12, 3.4, 0.12, 0x4a3421, -3, 5.4, -2.0));
 
-    // Mount Blender 3D set (HumenBell, BellFrame, BellBody, CapturedArtillery, FallenStandard, UnionFlagPole, FlagCloth).
     var blenderSet = mountBlenderSet('fall', group, null, function () {
       fallback.visible = false;
     });
 
-    // HMS Blenheim & Nemesis offshore firing the minute-gun salute.
     var ships = [];
     for (var s = 0; s < 2; s++) {
       var ship = Models.makeShip();
@@ -710,13 +776,23 @@ var Scenes = (function () {
       ships.push(ship);
     }
 
-    // Occupying British soldiers along the captured parapet.
     var holders = [];
     for (var h = 0; h < 7; h++) {
       var f = figure(h % 2 ? 'marine' : 'british', 'idle', h * 0.4);
       f.group.position.set(-15 + h * 5, 4.2, -0.8);
       group.add(f.group);
       holders.push(f);
+    }
+
+    // Drifting battle embers floating above the captured courtyard.
+    var embers = [];
+    var emberGeo = new THREE.SphereGeometry(0.08, 5, 4);
+    var emberMat = mat(0xff9c38, { roughness: 0.4, emissive: 0xff6200 });
+    for (var em = 0; em < 16; em++) {
+      var eMesh = new THREE.Mesh(emberGeo, emberMat);
+      eMesh.position.set(-10 + (em * 1.4), 0.6 + (em % 4), 2 + (em % 7) * 1.2);
+      group.add(eMesh);
+      embers.push({ mesh: eMesh, baseX: eMesh.position.x, speed: 0.45 + (em % 3) * 0.2 });
     }
 
     var salute = 0;
@@ -738,6 +814,13 @@ var Scenes = (function () {
           flagFallback.rotation.z = Math.sin(t * 1.6) * 0.06;
         }
 
+        for (var em = 0; em < embers.length; em++) {
+          var eObj = embers[em];
+          eObj.mesh.position.y += eObj.speed * dt;
+          eObj.mesh.position.x = eObj.baseX + Math.sin(t * 1.8 + em) * 0.45;
+          if (eObj.mesh.position.y > 7.5) eObj.mesh.position.y = 0.5;
+        }
+
         for (var i = 0; i < holders.length; i++) {
           updateFigure(holders[i], dt, 0, 'idle');
         }
@@ -751,6 +834,9 @@ var Scenes = (function () {
             { x: 0, y: 0.1, z: 1 },
             { big: true }
           );
+          if (typeof ctx.effects.smoke === 'function') {
+            ctx.effects.smoke({ x: ships[0].position.x, y: 2.5, z: ships[0].position.z + 9 });
+          }
         }
       },
       dispose: function () {

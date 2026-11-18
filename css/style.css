@@ -650,9 +650,55 @@ body {
 }
 
 .cine-top { top: 0; }
-.cine-bottom { bottom: 0; }
+.cine-bottom {
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
 
 #cinematic.active .cine-bar { height: 11vh; }
+
+#cine-hud {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(820px, 90vw);
+  opacity: 0;
+  transition: opacity 0.35s ease 0.25s;
+}
+
+#cinematic.active #cine-hud { opacity: 1; }
+
+#cine-step {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ochre);
+  white-space: nowrap;
+}
+
+#cine-progress {
+  flex: 1;
+  height: 3px;
+  background: rgba(201, 162, 39, 0.22);
+  overflow: hidden;
+}
+
+#cine-progress-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--ochre), #f0cf65);
+  transition: width 0.12s linear;
+}
+
+#cine-skip-hint {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--bone-dim);
+  white-space: nowrap;
+}
 
 #cine-caption {
   position: absolute;

@@ -7,17 +7,20 @@ const THREE = require('../vendor/three.min.js');
 global.THREE = THREE;
 global.Rig = require('../js/rig/humanoid');
 global.RigAnim = require('../js/rig/anim');
-global.Models = require('../js/models');
+const Models = require('../js/models');
+global.Models = Models;
 const Scenes = require('../js/story/scenes');
 global.Scenes = Scenes;
 const Cinematics = require('../js/story/cinematics');
 
 const ROOT = path.join(__dirname, '..');
 const CINE_DIR = path.join(ROOT, 'assets', 'models', 'cinematics');
+const MODELS_DIR = path.join(ROOT, 'assets', 'models');
+const PROPS_DIR = path.join(MODELS_DIR, 'props');
 
-function parseGlbJson(filePath) {
+function parseGlbJson(filePath, minBytes = 10 * 1024) {
   const buf = fs.readFileSync(filePath);
-  assert.ok(buf.length > 10 * 1024, `${path.basename(filePath)} must be > 10 KB`);
+  assert.ok(buf.length > minBytes, `${path.basename(filePath)} must be > ${minBytes} bytes`);
   assert.strictEqual(buf.toString('utf8', 0, 4), 'glTF', 'valid glTF magic header');
   assert.strictEqual(buf.readUInt32LE(4), 2, 'glTF version 2');
   const jsonLen = buf.readUInt32LE(12);
@@ -26,7 +29,7 @@ function parseGlbJson(filePath) {
   return JSON.parse(buf.toString('utf8', 20, 20 + jsonLen));
 }
 
-test('Blender 3D cinematic GLBs exist, are valid glTF 2.0, and expose required named landmarks and PBR materials', () => {
+test('Blender 3D cinematic GLBs and GitHub rigged/prop GLBs exist, are valid glTF 2.0, and embed PBR textures and landmarks', () => {
   const specs = [
     {
       file: 'humen-1839-opium.glb',
@@ -52,6 +55,8 @@ test('Blender 3D cinematic GLBs exist, are valid glTF 2.0, and expose required n
     assert.strictEqual(Scenes.MODEL_URLS && Object.values(Scenes.MODEL_URLS).includes(`assets/models/cinematics/${spec.file}`), true);
     const gltf = parseGlbJson(fullPath);
     assert.ok(Array.isArray(gltf.materials) && gltf.materials.length >= 6, `${spec.file} has PBR materials`);
+    assert.ok(Array.isArray(gltf.images) && gltf.images.length >= 1, `${spec.file} embeds PBR images`);
+    assert.ok(Array.isArray(gltf.textures) && gltf.textures.length >= 1, `${spec.file} embeds glTF textures`);
     for (const mat of gltf.materials) {
       assert.ok(mat.pbrMetallicRoughness, `${spec.file} material ${mat.name} uses PBR`);
     }
@@ -60,6 +65,25 @@ test('Blender 3D cinematic GLBs exist, are valid glTF 2.0, and expose required n
       assert.ok(nodeNames.has(req), `${spec.file} includes named node ${req}`);
     }
   }
+
+  for (const prop of ['arch.glb', 'column.glb', 'torch.glb', 'katana.glb']) {
+    const p = path.join(PROPS_DIR, prop);
+    assert.ok(fs.existsSync(p), `prop ${prop} exists`);
+    parseGlbJson(p, 5 * 1024);
+  }
+
+  for (const charGlb of ['qing-soldier-rigged.glb', 'guan-tianpei-rigged.glb']) {
+    const p = path.join(MODELS_DIR, charGlb);
+    assert.ok(fs.existsSync(p), `rigged character ${charGlb} exists`);
+    const gltf = parseGlbJson(p, 100 * 1024);
+    assert.ok(Array.isArray(gltf.animations) && gltf.animations.length >= 2, `${charGlb} includes animation clips`);
+  }
+
+  assert.strictEqual(typeof Models.loadQingSoldierModels, 'function');
+  assert.strictEqual(typeof Models.hasQingModel, 'function');
+  assert.strictEqual(typeof Models.hasCommanderModel, 'function');
+  const cmdFallback = Models.makeQingCommander();
+  assert.strictEqual(cmdFallback.userData.type, 'qing-commander');
 });
 
 function makeMockGlbWithNodes(names) {
@@ -92,7 +116,7 @@ test('Scenes builders construct 3D sets, animate Blender nodes cleanly, and pres
   };
   const ctx = { effects: effectsSpy };
 
-  // 1. Fallback path (no GLB registered yet) runs safely and disposes.
+  // 1. Fallback path runs safely and disposes.
   for (const fn of ['opiumDestruction', 'squadronApproach', 'rearAssault', 'theFall']) {
     const st = Scenes[fn](ctx);
     assert.ok(st && st.group && st.group.isObject3D, `${fn} fallback returns THREE group`);
@@ -106,7 +130,7 @@ test('Scenes builders construct 3D sets, animate Blender nodes cleanly, and pres
 
   // 2. Mounted Blender GLB path animates named nodes and protects sharedAsset geometries from dispose().
   const opiumMock = makeMockGlbWithNodes(['Pavilion', 'LinZexu', 'OpiumPit', 'SluiceGate', 'LimeWater', 'OpiumChests', 'OpiumBalls', 'Paddles']);
-  const squadronMock = makeMockGlbWithNodes(['Nemesis', 'Wheel_L', 'Wheel_R', 'WarJunk', 'IronChainBoom']);
+  const squadronMock = makeMockGlbWithNodes(['Nemesis', 'Wheel_L', 'Wheel_R', 'WakeFoam', 'WarJunk', 'BurningJunk', 'IronChainBoom']);
   const assaultMock = makeMockGlbWithNodes(['BreachedBastion', 'Gate_L', 'Gate_R', 'GuanTianpei', 'Saber', 'ImperialSeal']);
   const fallMock = makeMockGlbWithNodes(['HumenBell', 'BellBody', 'CapturedArtillery', 'FallenStandard', 'FlagCloth']);
 
@@ -119,7 +143,7 @@ test('Scenes builders construct 3D sets, animate Blender nodes cleanly, and pres
 
   const s1 = Scenes.opiumDestruction(ctx);
   assert.strictEqual(s1.blenderSet.mounted, true);
-  s1.update(3.5, 0.05);
+  s1.update(6.5, 0.05);
   assert.notStrictEqual(s1.blenderSet.nodes.OpiumBalls.scale.y, 1, 'opium balls shrink into lime pool');
   assert.ok(s1.blenderSet.nodes.SluiceGate.position.y > 0, 'sluice gate lifts');
   s1.dispose();
@@ -149,11 +173,20 @@ test('Scenes builders construct 3D sets, animate Blender nodes cleanly, and pres
   assert.strictEqual(fallMock.getSharedDisposeCalls(), 0);
 });
 
-test('Cinematics sequences step through all shots, interpolate camera FOV/pos, fire onShot, and restore camera FOV on finish/stop', () => {
+test('Cinematics keeps 3D stage alive across all shots, applies & restores sky/fog atmosphere and FOV, and supports skip/advance', () => {
   const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9fc7e8);
+  scene.fog = new THREE.Fog(0x9fc7e8, 60, 220);
   const camera = new THREE.PerspectiveCamera(75, 16 / 9, 0.1, 1000);
 
-  for (const id of ['humen-1839', 'humen-squadron', 'humen-assault', 'humen-fall']) {
+  const seqStageNames = {
+    'humen-1839': 'scene-opium-1839',
+    'humen-squadron': 'scene-squadron',
+    'humen-assault': 'scene-assault',
+    'humen-fall': 'scene-fall',
+  };
+
+  for (const id of Object.keys(seqStageNames)) {
     const seq = Cinematics.SEQUENCES[id];
     assert.ok(seq && seq.shots.length >= 2, `${id} defines shots`);
 
@@ -170,24 +203,45 @@ test('Cinematics sequences step through all shots, interpolate camera FOV/pos, f
     assert.strictEqual(ok, true);
     assert.strictEqual(Cinematics.isActive(), true);
     assert.notStrictEqual(camera.fov, 75, `${id} applies cinematic FOV`);
+    assert.strictEqual(scene.background.getHex(), seq.atmosphere.bg, `${id} applies sky color`);
+    assert.strictEqual(scene.fog.color.getHex(), seq.atmosphere.fogColor, `${id} applies fog color`);
 
     for (let s = 0; s < seq.shots.length; s++) {
+      // Stage group MUST remain mounted in scene on Shot 0, Shot 1, Shot 2, Shot 3!
+      assert.ok(
+        scene.children.some((c) => c.name === seqStageNames[id]),
+        `${id} keeps stage mounted during shot ${s}`
+      );
       const dur = seq.shots[s].duration;
       Cinematics.update(dur * 0.5);
       Cinematics.update(dur * 0.6);
     }
+
     assert.strictEqual(shotsFired.length, seq.shots.length, `${id} fires onShot for every shot`);
     assert.strictEqual(Cinematics.confirm(), true, `${id} confirms at end`);
     assert.strictEqual(ended, true, `${id} triggers onEnd`);
     assert.strictEqual(Cinematics.isActive(), false);
     assert.strictEqual(camera.fov, 75, `${id} restores gameplay FOV after finish`);
+    assert.strictEqual(scene.background.getHex(), 0x9fc7e8, `${id} restores gameplay sky after finish`);
+    assert.strictEqual(scene.fog.color.getHex(), 0x9fc7e8, `${id} restores gameplay fog after finish`);
   }
 
-  // Verify early stop() also restores camera FOV cleanly.
-  Cinematics.start('humen-assault', { scene, camera, waitForInput: true });
+  // Verify advanceOrConfirm respects early click guard (< 0.35s) and advances shot (> 0.35s), and skip() restores everything.
+  let skippedEnded = false;
+  Cinematics.start('humen-assault', {
+    scene,
+    camera,
+    waitForInput: true,
+    onEnd: () => { skippedEnded = true; },
+  });
+  Cinematics.update(0.1);
+  assert.strictEqual(Cinematics.advanceOrConfirm(), false, 'blocks accidental advance immediately after start');
   Cinematics.update(0.5);
-  assert.notStrictEqual(camera.fov, 75);
-  Cinematics.stop();
+  assert.strictEqual(Cinematics.advanceOrConfirm(), true, 'advances shot on deliberate input');
+  assert.ok(scene.children.some((c) => c.name === 'scene-assault'), 'stage remains present after advance');
+  assert.strictEqual(Cinematics.skip(), true, 'skip() finishes cinematic');
+  assert.strictEqual(skippedEnded, true);
   assert.strictEqual(Cinematics.isActive(), false);
-  assert.strictEqual(camera.fov, 75, 'stop() restores gameplay FOV');
+  assert.strictEqual(camera.fov, 75);
+  assert.strictEqual(scene.background.getHex(), 0x9fc7e8);
 });

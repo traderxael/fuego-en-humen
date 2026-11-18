@@ -349,7 +349,7 @@
       if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.waveToast === 'function') {
         return DIALOGUES.waveToast(w);
       }
-    } catch (e) {}
+    } catch (e) { }
     return undefined;
   }
 
@@ -365,28 +365,28 @@
           Voice.speak(text);
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
   function narrateWave(w) {
     try {
       if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateWave === 'function') {
         narrate(DIALOGUES.narrateWave(w));
       }
-    } catch (e) {}
+    } catch (e) { }
   }
   function narrateBriefing() {
     try {
       if (typeof DIALOGUES !== 'undefined' && DIALOGUES && DIALOGUES.narrator && DIALOGUES.narrator.lines) {
         narrate(DIALOGUES.narrator.lines.briefing);
       }
-    } catch (e) {}
+    } catch (e) { }
   }
   function narrateEnd(moment) {
     try {
       if (typeof DIALOGUES !== 'undefined' && DIALOGUES && typeof DIALOGUES.narrateEnd === 'function') {
         narrate(DIALOGUES.narrateEnd(moment));
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   const btnPlay = document.getElementById('btn-play');
@@ -451,7 +451,7 @@
   function syncMusicButton() {
     if (!btnMusic) return;
     var muted = false;
-    try { if (typeof sfx !== 'undefined' && sfx && typeof sfx.isMuted === 'function') muted = sfx.isMuted(); } catch (e) {}
+    try { if (typeof sfx !== 'undefined' && sfx && typeof sfx.isMuted === 'function') muted = sfx.isMuted(); } catch (e) { }
     btnMusic.textContent = muted ? '♪ Música: Silenciada (M)' : '♪ Música: Al otro lado del río (M)';
     btnMusic.setAttribute('aria-pressed', muted ? 'true' : 'false');
     btnMusic.style.opacity = muted ? '0.65' : '1';
@@ -469,7 +469,7 @@
   function syncVoiceButton() {
     if (!btnVoice) return;
     var off = false;
-    try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.isEnabled === 'function') off = !Voice.isEnabled(); } catch (e) {}
+    try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.isEnabled === 'function') off = !Voice.isEnabled(); } catch (e) { }
     btnVoice.textContent = off ? '🎙️ Voz: Silenciada (V)' : '🎙️ Voz: Maestro Xu (V)';
     btnVoice.setAttribute('aria-pressed', off ? 'false' : 'true');
     btnVoice.style.opacity = off ? '0.65' : '1';
@@ -477,49 +477,74 @@
   if (btnVoice) {
     btnVoice.addEventListener('click', function (ev) {
       if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
-      try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (e) {}
+      try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (e) { }
       syncVoiceButton();
     });
   }
 
   window.addEventListener('keydown', function (e) {
     if (e.code === 'KeyM') { sfxCall('unlock'); sfxCall('toggleMusic'); syncMusicButton(); }
-    if (e.code === 'KeyV') { try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (err) {} syncVoiceButton(); }
+    if (e.code === 'KeyV') { try { if (typeof Voice !== 'undefined' && Voice && typeof Voice.toggle === 'function') Voice.toggle(); } catch (err) { } syncVoiceButton(); }
     if (e.code === (SCORE_CFG.signalKey || 'KeyG') && state.phase === 'playing') {
       if (useSignal()) e.preventDefault();
     }
   });
-  try { state.missionTitle = 'Humen, 1841'; } catch (e) {}
+  try { state.missionTitle = 'Humen, 1841'; } catch (e) { }
   syncMusicButton();
   syncVoiceButton();
 
-  // A click or a key confirms the end of a cinematic.
-  function confirmCinematic() {
-    if (!Cinematics.isActive()) return;
+  // Handle clicks and keys during cinematics: advance shots, confirm at end, or Esc to skip.
+  function handleCinematicKey(ev) {
+    if (typeof Cinematics === 'undefined' || !Cinematics.isActive()) return;
+    if (ev && (ev.code === 'KeyM' || ev.code === 'KeyV')) return;
+    if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+    if (ev && ev.code === 'Escape') {
+      ev.preventDefault();
+      if (Cinematics.skip()) {
+        setWorldVisible(true);
+        setViewmodelVisible(true);
+      }
+      return;
+    }
+    if (ev && (ev.code === 'Space' || ev.code === 'Enter')) {
+      ev.preventDefault();
+      if (Cinematics.advanceOrConfirm() && !Cinematics.isActive()) {
+        setWorldVisible(true);
+        setViewmodelVisible(true);
+      }
+      return;
+    }
     if (Cinematics.confirm()) {
       setWorldVisible(true);
       setViewmodelVisible(true);
     }
   }
-  window.addEventListener('keydown', confirmCinematic);
-  window.addEventListener('mousedown', confirmCinematic);
-  // While a cinematic owns the screen, clicks confirm it but must not reach
-  // the canvas: its click handler requests pointer lock, which would start the
-  // mission before beginMission() (no wave, no checkpoint).
+  window.addEventListener('keydown', handleCinematicKey, true);
+  // While a cinematic owns the screen, clicks advance/confirm it cleanly without
+  // reaching the canvas (whose click handler requests pointer lock).
   window.addEventListener('click', function (ev) {
     if (typeof Cinematics === 'undefined' || !Cinematics.isActive()) return;
     ev.stopPropagation();
-    confirmCinematic();
+    if (Cinematics.advanceOrConfirm() && !Cinematics.isActive()) {
+      setWorldVisible(true);
+      setViewmodelVisible(true);
+    }
   }, true);
 
 
-  // Preload Blender 3D cinematic sets + static rigged soldier in background.
+  // Preload Blender 3D cinematic sets + rigged British/Qing/Commander GLBs in background.
   if (typeof Scenes !== 'undefined' && typeof Scenes.preloadModels === 'function') {
     Scenes.preloadModels();
   }
   Models.loadBritishSoldierModel('assets/models/soldado-britanico-1841-rigged.glb', function () {
     Enemies.refreshSoldierVisuals(enemies);
   });
+  if (typeof Models.loadQingSoldierModels === 'function') {
+    Models.loadQingSoldierModels(
+      'assets/models/qing-soldier-rigged.glb',
+      'assets/models/guan-tianpei-rigged.glb'
+    );
+  }
 
   // Both damage-to-fort channels end in this one path.
   const fortDamaged = function (dmg) {

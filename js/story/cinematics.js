@@ -1,15 +1,6 @@
-// Cinematic engine: letterboxed sequences with camera keyframes (pos, look, fov),
-// subtitles, historical caption cards, and shot event callbacks.
-//
-// A sequence is { id, shots: [...] }. A shot is:
-//   {
-//     duration: seconds,
-//     camera:   [ { t, pos: [x,y,z], look: [x,y,z], fov?: number }, ... ] (t in 0..1)
-//     caption:  { tag, text, source }   historical card, bottom left
-//     subtitle: { speaker, text }       dialogue, bottom centre
-//     audio?:   'waveHorn' | 'cannon' | 'explosion'
-//     stage:    function(ctx) -> { update(t, dt), dispose() }
-//   }
+// Cinematic engine: letterboxed sequences with continuous multi-shot 3D stages,
+// camera keyframes (pos, look, fov), per-sequence sky/fog atmosphere grading,
+// handheld battle shake, shot progress UI, subtitles and historical cards.
 //
 // Browser global `Cinematics`; also guarded for Node tooling consistency.
 
@@ -67,6 +58,21 @@ var Cinematics = (function () {
     if (root) root.classList.toggle('active', !!on);
   }
 
+  function updateProgressUI(stateObj, u) {
+    var stepEl = el('cine-step');
+    var fillEl = el('cine-progress-fill');
+    if (!stateObj || !stateObj.def || !stateObj.def.shots) {
+      if (stepEl) stepEl.textContent = '';
+      if (fillEl) fillEl.style.width = '0%';
+      return;
+    }
+    var total = stateObj.def.shots.length;
+    var idx = Math.max(0, Math.min(total - 1, stateObj.shotIndex));
+    if (stepEl) stepEl.textContent = 'Plano ' + (idx + 1) + ' / ' + total;
+    var overall = total > 0 ? ((idx + (u || 0)) / total) * 100 : 0;
+    if (fillEl) fillEl.style.width = Math.max(0, Math.min(100, overall)).toFixed(1) + '%';
+  }
+
   function cameraState(shot, u) {
     var keys = shot.camera || [];
     if (!keys.length) return null;
@@ -100,9 +106,20 @@ var Cinematics = (function () {
 
   var _look = new THREE.Vector3();
 
-  function applyCamera(camera, state) {
+  function applyCamera(camera, state, elapsed, shake, handheld) {
     if (!state || !camera) return;
-    camera.position.set(state.pos[0], state.pos[1], state.pos[2]);
+    var t = elapsed || 0;
+    var sx = 0;
+    var sy = 0;
+    if (handheld && t > 0) {
+      sx += Math.sin(t * 1.45) * 0.03;
+      sy += Math.cos(t * 1.85) * 0.02;
+    }
+    if (shake && shake > 0.001) {
+      sx += Math.sin(t * 37.0) * shake * 0.22;
+      sy += Math.cos(t * 43.0) * shake * 0.16;
+    }
+    camera.position.set(state.pos[0] + sx, state.pos[1] + sy, state.pos[2]);
     _look.set(state.look[0], state.look[1], state.look[2]);
     camera.lookAt(_look);
     if (state.fov != null && typeof camera.fov === 'number' && Math.abs(camera.fov - state.fov) > 1e-4) {
@@ -120,11 +137,27 @@ var Cinematics = (function () {
     }
   }
 
+  function applyAtmosphere(scene, atmo) {
+    if (!scene || !atmo) return;
+    if (atmo.bg != null) scene.background = new THREE.Color(atmo.bg);
+    if (atmo.fogColor != null && typeof THREE.Fog === 'function') {
+      scene.fog = new THREE.Fog(atmo.fogColor, atmo.fogNear || 20, atmo.fogFar || 120);
+    }
+  }
+
+  function restoreAtmosphere(stateObj) {
+    if (!stateObj || !stateObj.ctx || !stateObj.ctx.scene) return;
+    stateObj.ctx.scene.background = stateObj.savedBg || null;
+    stateObj.ctx.scene.fog = stateObj.savedFog || null;
+  }
+
   // --- Sequences ----------------------------------------------------------
   var SEQUENCES = {
     // The destruction of the opium, Humen beach, 3 June 1839.
     'humen-1839': {
       id: 'humen-1839',
+      atmosphere: { bg: 0xd8c39e, fogColor: 0xd8c39e, fogNear: 26, fogFar: 130 },
+      handheld: false,
       shots: [
         {
           duration: 7,
@@ -157,7 +190,7 @@ var Cinematics = (function () {
           },
           subtitle: {
             speaker: 'Maestro Xu',
-            text: 'El agua turbia hierve con la cal viva; los obreros remueven el fango antes de abrir la compuerta.',
+            text: 'El agua turbia hierve con la cal viva; los obreros remueven las tres fosas antes de abrir la compuerta.',
           },
         },
         {
@@ -195,6 +228,8 @@ var Cinematics = (function () {
     // The squadron forces the strait, 23 February 1841.
     'humen-squadron': {
       id: 'humen-squadron',
+      atmosphere: { bg: 0x6e8294, fogColor: 0x6e8294, fogNear: 24, fogFar: 135 },
+      handheld: true,
       shots: [
         {
           duration: 7,
@@ -227,7 +262,7 @@ var Cinematics = (function () {
           },
           subtitle: {
             speaker: 'Comandante Guan Tianpei',
-            text: 'Sus ruedas remontan la corriente sin viento. ¡Asegurad la batería de retaguardia!',
+            text: 'Sus ruedas remontan la corriente sin viento y lanzan cohetes incendarios. ¡Asegurad la batería!',
           },
           audio: 'cannon',
         },
@@ -237,6 +272,8 @@ var Cinematics = (function () {
     // The rear assault, 26 February 1841, 13:30.
     'humen-assault': {
       id: 'humen-assault',
+      atmosphere: { bg: 0x4a3528, fogColor: 0x4a3528, fogNear: 18, fogFar: 95 },
+      handheld: true,
       shots: [
         {
           duration: 8,
@@ -295,6 +332,8 @@ var Cinematics = (function () {
     // The fort is taken: the honest ending.
     'humen-fall': {
       id: 'humen-fall',
+      atmosphere: { bg: 0x3b3548, fogColor: 0x3b3548, fogNear: 22, fogFar: 115 },
+      handheld: false,
       shots: [
         {
           duration: 8,
@@ -355,17 +394,31 @@ var Cinematics = (function () {
     var def = SEQUENCES[id];
     if (!def) return false;
     stop();
-    var savedFov = (ctx && ctx.camera && typeof ctx.camera.fov === 'number') ? ctx.camera.fov : 75;
+    var cam = ctx && ctx.camera;
+    var scn = ctx && ctx.scene;
+    var savedFov = (cam && typeof cam.fov === 'number') ? cam.fov : 75;
+    var savedBg = (scn && scn.background && typeof scn.background.clone === 'function')
+      ? scn.background.clone()
+      : (scn ? scn.background : null);
+    var savedFog = (scn && scn.fog && typeof scn.fog.clone === 'function')
+      ? scn.fog.clone()
+      : (scn ? scn.fog : null);
+
     active = {
       def: def,
       ctx: ctx || {},
       savedFov: savedFov,
+      savedBg: savedBg,
+      savedFog: savedFog,
       shotIndex: -1,
       shotTime: 0,
+      stageTime: 0,
       stage: null,
       waiting: false,
       elapsed: 0,
+      shake: 0,
     };
+    if (scn && def.atmosphere) applyAtmosphere(scn, def.atmosphere);
     setOverlay(true);
     nextShot();
     return true;
@@ -373,8 +426,6 @@ var Cinematics = (function () {
 
   function nextShot() {
     if (!active) return;
-    if (active.stage && active.stage.dispose) active.stage.dispose();
-    active.stage = null;
     active.shotIndex++;
     active.shotTime = 0;
     if (active.shotIndex >= active.def.shots.length) {
@@ -384,14 +435,19 @@ var Cinematics = (function () {
     var shot = active.def.shots[active.shotIndex];
     showCaption(shot.caption || null);
     showSubtitle(shot.subtitle || null);
+    updateProgressUI(active, 0);
+
+    // Keep previous 3D stage alive across shots unless this shot supplies a new stage!
     if (shot.stage && active.ctx.scene) {
+      if (active.stage && active.stage.dispose) active.stage.dispose();
       active.stage = shot.stage(active.ctx);
+      active.stageTime = 0;
       if (active.stage && active.stage.group && active.ctx.scene) {
         active.ctx.scene.add(active.stage.group);
       }
     }
-    // Apply initial camera pose immediately for t=0 so frame 0 renders accurately.
-    applyCamera(active.ctx.camera, cameraState(shot, 0));
+
+    applyCamera(active.ctx.camera, cameraState(shot, 0), active.elapsed, active.shake, false);
     if (active.ctx && typeof active.ctx.onShot === 'function') {
       active.ctx.onShot(shot, active.shotIndex);
     }
@@ -403,8 +459,10 @@ var Cinematics = (function () {
     if (prev && prev.stage && prev.stage.dispose) prev.stage.dispose();
     active = null;
     restoreFov(prev);
+    restoreAtmosphere(prev);
     showCaption(null);
     showSubtitle(null);
+    updateProgressUI(null, 0);
     setOverlay(false);
     if (ctx && typeof ctx.onEnd === 'function') ctx.onEnd();
   }
@@ -415,8 +473,10 @@ var Cinematics = (function () {
     if (prev.stage && prev.stage.dispose) prev.stage.dispose();
     active = null;
     restoreFov(prev);
+    restoreAtmosphere(prev);
     showCaption(null);
     showSubtitle(null);
+    updateProgressUI(null, 0);
     setOverlay(false);
   }
 
@@ -424,17 +484,25 @@ var Cinematics = (function () {
     return !!active;
   }
 
+  function addCineShake(amount) {
+    if (!active) return;
+    active.shake = Math.min(1.5, Math.max(active.shake || 0, amount || 0.25));
+  }
+
   function update(dt) {
     if (!active) return false;
     var shot = active.def.shots[active.shotIndex];
     if (!shot) { finish(); return false; }
     active.shotTime += dt;
+    active.stageTime += dt;
     active.elapsed += dt;
+    active.shake = Math.max(0, (active.shake || 0) - dt * 1.8);
 
     var u = shot.duration > 0 ? Math.min(1, active.shotTime / shot.duration) : 1;
-    applyCamera(active.ctx.camera, cameraState(shot, u));
+    applyCamera(active.ctx.camera, cameraState(shot, u), active.elapsed, active.shake, !!active.def.handheld);
+    updateProgressUI(active, u);
 
-    if (active.stage && active.stage.update) active.stage.update(active.shotTime, dt);
+    if (active.stage && active.stage.update) active.stage.update(active.stageTime, dt);
 
     if (u >= 1) {
       var last = active.shotIndex >= active.def.shots.length - 1;
@@ -457,11 +525,29 @@ var Cinematics = (function () {
     return true;
   }
 
+  function advanceOrConfirm() {
+    if (!active) return false;
+    if (active.waiting) return confirm();
+    // Require at least 0.35s on current shot so start click/key doesn't double-skip.
+    if (active.shotTime < 0.35) return false;
+    nextShot();
+    return true;
+  }
+
+  function skip() {
+    if (!active) return false;
+    finish();
+    return true;
+  }
+
   return {
     start: start,
     stop: stop,
     update: update,
     confirm: confirm,
+    advanceOrConfirm: advanceOrConfirm,
+    skip: skip,
+    addCineShake: addCineShake,
     isActive: isActive,
     SEQUENCES: SEQUENCES,
   };
